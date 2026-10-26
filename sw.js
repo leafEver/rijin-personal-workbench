@@ -1,4 +1,4 @@
-const CACHE_NAME = "rijin-shell-v9";
+const CACHE_NAME = "rijin-shell-v11";
 const APP_SHELL = [
   "./",
   "./index.html",

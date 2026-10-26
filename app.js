@@ -453,15 +453,20 @@
       $("#today-progress-copy").textContent = stats.planned ? `还有 ${stats.planned} 件待完成` : "暂无安排，也可以留一点时间给自己";
     }
 
-    $("#week-strip").innerHTML = Array.from({ length: 7 }, (_, offset) => {
-      const date = addDays(new Date(), offset);
+    const weekDates = Array.from({ length: 7 }, (_, offset) => addDays(new Date(), offset));
+    const weekKeys = weekDates.map(dateKey);
+    const weekStats = aggregate(weekKeys);
+    $("#week-summary").textContent = `本周 ${weekStats.completed} / ${weekStats.planned}`;
+    $("#week-strip").innerHTML = weekDates.map((date, offset) => {
       const dateValue = dateKey(date);
       const dateStats = getDayStats(dateValue);
+      const dayProgress = dateStats.planned ? Math.round((dateStats.completed / dateStats.planned) * 100) : 0;
       return `
-        <button class="week-day ${dateValue === key ? "is-selected" : ""} ${offset === 0 ? "is-today" : ""}" type="button" data-plan-date="${dateValue}">
+        <button class="week-day ${dateValue === key ? "is-selected" : ""} ${offset === 0 ? "is-today" : ""}" type="button" data-plan-date="${dateValue}" style="--day-progress: ${dayProgress}%">
           <span>${offset === 0 ? "今天" : `周${SHORT_WEEKDAYS[date.getDay()]}`}</span>
           <strong>${date.getDate()}</strong>
           <small>${dateStats.completed}/${dateStats.planned}</small>
+          <i class="week-day-progress" aria-hidden="true"><b></b></i>
         </button>`;
     }).join("");
 

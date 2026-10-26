@@ -202,10 +202,10 @@
             <section class="week-plan-panel reveal delay-2">
               <div class="week-plan-heading">
                 <div>
-                  <span class="section-kicker">未来 7 天</span>
-                  <h2>提前安排，也给自己留出余地。</h2>
+                  <span class="section-kicker">本周进度</span>
+                  <h2>这一周，每一天都看得见。</h2>
                 </div>
-                <span class="soft-badge neutral">点击日期查看计划</span>
+                <span class="soft-badge neutral" id="week-summary">本周 0 / 0</span>
               </div>
               <div class="week-strip" id="week-strip"></div>
             </section>
@@ -214,7 +214,7 @@
               <div class="panel-heading task-board-heading">
                 <div>
                   <h2 id="task-board-title">今天的任务</h2>
-                  <p>底线保稳定，加分促成长，周任务推进长期目标。</p>
+                  <p>先完成每日必做，再按余力推进加分任务和本周目标。</p>
                 </div>
                 <span class="soft-badge" id="task-board-count">0 项</span>
               </div>
@@ -224,13 +224,13 @@
                   <div class="task-lane-heading">
                     <div>
                       <span class="lane-mark">01</span>
-                      <h3>底线</h3>
-                      <p>今天必须保住的事</p>
+                      <h3>每日必做</h3>
+                      <p>先把今天最该保住的事划掉</p>
                     </div>
                     <span id="baseline-lane-count">0 / 0</span>
                   </div>
                   <div class="task-list" id="baseline-task-list"></div>
-                  <button class="lane-add" type="button" data-add-type="baseline">＋ 添加底线任务</button>
+                  <button class="lane-add" type="button" data-add-type="baseline">＋ 添加每日必做</button>
                 </section>
 
                 <section class="task-lane lane-bonus">
