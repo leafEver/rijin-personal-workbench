@@ -617,6 +617,55 @@ svg {
   gap: 10px;
 }
 
+.sync-pill {
+  display: inline-flex;
+  height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--ink-faint);
+  background: rgba(255, 254, 250, 0.68);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sync-pill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b3b0a8;
+  box-shadow: 0 0 0 4px rgba(179, 176, 168, 0.1);
+}
+
+.sync-pill[data-state="synced"] {
+  color: var(--sage);
+}
+
+.sync-pill[data-state="synced"] i {
+  background: #75906c;
+  box-shadow: 0 0 0 4px rgba(117, 144, 108, 0.1);
+}
+
+.sync-pill[data-state="syncing"] i {
+  background: var(--amber);
+  animation: syncPulse 1s ease-in-out infinite;
+}
+
+.sync-pill[data-state="offline"] {
+  color: #a56752;
+}
+
+.sync-pill[data-state="offline"] i {
+  background: var(--coral);
+}
+
+@keyframes syncPulse {
+  50% { opacity: 0.35; transform: scale(0.72); }
+}
+
 .music-widget {
   display: flex;
   align-items: center;
@@ -2106,6 +2155,54 @@ svg {
   text-decoration: underline;
 }
 
+.cloud-account-card {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 17px;
+  margin-top: 22px;
+  padding: 21px 23px;
+  border: 1px solid rgba(83, 100, 78, 0.14);
+  border-radius: 19px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(219, 229, 211, 0.64), transparent 34%),
+    rgba(255, 254, 250, 0.84);
+  box-shadow: var(--shadow-small);
+}
+
+.cloud-account-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 14px;
+  color: var(--sage);
+  background: var(--sage-soft);
+}
+
+.cloud-account-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.cloud-account-copy h2 {
+  margin: 5px 0 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+}
+
+.cloud-account-copy p {
+  margin: 5px 0 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.cloud-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .ios-install-card {
   position: relative;
   display: grid;
@@ -2359,6 +2456,154 @@ select.modal-input {
 
 .confirm-modal .modal-actions {
   justify-content: center;
+}
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: grid;
+  place-items: center;
+  padding:
+    calc(20px + env(safe-area-inset-top))
+    calc(20px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom))
+    calc(20px + env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 93% 8%, rgba(219, 228, 211, 0.8), transparent 34%),
+    radial-gradient(circle at 2% 92%, rgba(238, 221, 201, 0.54), transparent 32%),
+    rgba(245, 243, 237, 0.97);
+  backdrop-filter: blur(20px);
+}
+
+.auth-screen[hidden] {
+  display: none;
+}
+
+.auth-card {
+  width: min(510px, 100%);
+  max-height: calc(100dvh - 40px);
+  padding: 31px 36px 25px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 28px;
+  background: rgba(255, 254, 250, 0.91);
+  box-shadow: 0 30px 90px rgba(55, 64, 49, 0.16);
+  text-align: center;
+  animation: welcomeArrive 520ms cubic-bezier(0.2, 0.72, 0.2, 1) both;
+}
+
+.auth-brand {
+  justify-content: center;
+}
+
+.auth-symbol {
+  display: grid;
+  width: 67px;
+  height: 67px;
+  margin: 25px auto 18px;
+  place-items: center;
+  border-radius: 21px;
+  color: var(--sage);
+  background: rgba(230, 236, 225, 0.82);
+}
+
+.auth-symbol svg {
+  width: 30px;
+  height: 30px;
+}
+
+.auth-card .eyebrow {
+  margin-bottom: 9px;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 33px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.auth-copy {
+  max-width: 370px;
+  margin: 12px auto 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.auth-form {
+  margin-top: 22px;
+  text-align: left;
+}
+
+.auth-form .field-label {
+  margin-top: 0;
+}
+
+.auth-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.auth-input-row .primary-button {
+  height: 47px;
+  white-space: nowrap;
+}
+
+.auth-code-form {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.auth-code-input {
+  height: 55px;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-align: center;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 11px;
+}
+
+.auth-change-email {
+  display: block;
+  margin: 13px auto 0;
+  color: var(--ink-faint);
+}
+
+.auth-status {
+  min-height: 32px;
+  margin: 16px 0 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.auth-status[data-state="error"] {
+  color: #b45949;
+}
+
+.auth-status[data-state="success"] {
+  color: var(--sage);
+}
+
+.auth-local-button {
+  margin-top: 4px;
+  padding: 7px 10px;
+  border: 0;
+  color: var(--ink-faint);
+  background: transparent;
+  font-size: 10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
 
 .toast {
@@ -2996,6 +3241,21 @@ select:focus-visible {
     gap: 13px;
   }
 
+  .cloud-account-card {
+    grid-template-columns: 45px minmax(0, 1fr);
+    gap: 13px;
+  }
+
+  .cloud-account-icon {
+    width: 43px;
+    height: 43px;
+  }
+
+  .cloud-account-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
   .ios-install-icon {
     width: 43px;
     height: 43px;
@@ -3095,6 +3355,44 @@ select:focus-visible {
   }
 
   .welcome-footer {
+    display: none;
+  }
+
+  .auth-screen {
+    padding:
+      calc(12px + env(safe-area-inset-top))
+      calc(12px + env(safe-area-inset-right))
+      calc(12px + env(safe-area-inset-bottom))
+      calc(12px + env(safe-area-inset-left));
+  }
+
+  .auth-card {
+    padding: 24px 20px 20px;
+    border-radius: 24px;
+  }
+
+  .auth-symbol {
+    width: 56px;
+    height: 56px;
+    margin: 17px auto 14px;
+    border-radius: 17px;
+  }
+
+  .auth-card h1 {
+    font-size: 28px;
+  }
+
+  .auth-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-pill {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .sync-pill span {
     display: none;
   }
 
@@ -3205,6 +3503,14 @@ select:focus-visible {
 
   .ios-install-card {
     padding: 17px;
+  }
+
+  .cloud-account-card {
+    padding: 17px;
+  }
+
+  .cloud-account-actions {
+    flex-wrap: wrap;
   }
 
   .modal-card {

@@ -55,7 +55,7 @@
         </div>
         <p class="welcome-privacy">
           <span class="privacy-dot" aria-hidden="true"></span>
-          音乐与记录都只保存在本机
+          音乐只在本机播放 · 记录可同步到私人云端
         </p>
       </div>
       <p class="welcome-footer">今天也有一件值得慢慢做的事</p>
@@ -109,7 +109,7 @@
 
         <div class="sidebar-footer">
           <span class="privacy-dot" aria-hidden="true"></span>
-          <span>数据只保存在本机</span>
+          <span>本机保存 · 云端同步</span>
         </div>
       </aside>
 
@@ -130,6 +130,10 @@
             <strong id="topbar-date">10月26日</strong>
           </div>
           <div class="topbar-actions">
+            <button class="sync-pill" id="sync-pill" type="button" title="立即检查云端同步" aria-label="云端同步状态">
+              <i aria-hidden="true"></i>
+              <span id="sync-status-text">未登录</span>
+            </button>
             <div class="music-widget" id="music-widget">
               <button class="music-control" id="music-toggle" type="button" aria-label="播放背景音乐" aria-pressed="false" title="播放 / 暂停背景音乐">
                 <span class="music-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
@@ -414,7 +418,7 @@
             <section class="data-panel">
               <div>
                 <h2>数据与备份</h2>
-                <p>所有记录仅存储在当前浏览器。定期导出备份，换设备时再导入即可。</p>
+                <p>记录会先保存在本机，登录后自动同步到你的私人云端；仍建议定期导出备份。</p>
               </div>
               <div class="data-actions">
                 <button class="secondary-button" id="export-data" type="button">导出备份</button>
@@ -423,6 +427,21 @@
                   <input id="import-data" type="file" accept="application/json" />
                 </label>
                 <button class="danger-text-button" id="clear-data" type="button">清空全部数据</button>
+              </div>
+            </section>
+
+            <section class="cloud-account-card" id="cloud-account-card">
+              <div class="cloud-account-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M7 18.5h10.5a4 4 0 0 0 .4-8A6.5 6.5 0 0 0 5.4 9.7 4.5 4.5 0 0 0 7 18.5Z"/><path d="m9.2 13 2 2 4-4"/></svg>
+              </div>
+              <div class="cloud-account-copy">
+                <span class="section-kicker">云端安全副本</span>
+                <h2>账号与同步</h2>
+                <p id="cloud-account-email">尚未登录，数据目前只保存在本机。</p>
+              </div>
+              <div class="cloud-account-actions">
+                <button class="secondary-button" id="manual-sync" type="button">立即同步</button>
+                <button class="danger-text-button" id="sign-out-button" type="button">退出登录</button>
               </div>
             </section>
 
@@ -537,6 +556,46 @@
       </form>
     </dialog>
 
+    <section class="auth-screen" id="auth-screen" hidden aria-labelledby="auth-title">
+      <div class="auth-card">
+        <div class="welcome-brand auth-brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 40 40" fill="none">
+              <path d="M10 22c0-8.4 6.8-15.2 15.2-15.2H29v3.8c0 8.4-6.8 15.2-15.2 15.2H10V22Z" fill="currentColor"/>
+              <path d="M11 29c3.4-6.2 8.1-10.9 14.5-14.5" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M10 30h20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span><strong>日进</strong><small>把日子过成积累</small></span>
+        </div>
+        <div class="auth-symbol" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7.5 12 13l8-5.5M4 5.5h16v13H4z"/></svg>
+        </div>
+        <p class="eyebrow">保护你的每一天</p>
+        <h1 id="auth-title">用邮箱保存记录</h1>
+        <p class="auth-copy">登录后，任务、日记和统计会自动保存到你的私有云端空间。换手机也能恢复。</p>
+
+        <form class="auth-form" id="email-form">
+          <label class="field-label" for="auth-email">邮箱地址</label>
+          <div class="auth-input-row">
+            <input class="modal-input" id="auth-email" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required />
+            <button class="primary-button" id="send-code-button" type="submit">发送验证码</button>
+          </div>
+        </form>
+
+        <form class="auth-form auth-code-form" id="code-form" hidden>
+          <label class="field-label" for="auth-code">邮箱验证码</label>
+          <input class="modal-input auth-code-input" id="auth-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" pattern="[0-9]{6,10}" placeholder="请输入验证码" required />
+          <button class="primary-button auth-submit" id="verify-code-button" type="submit">登录并同步</button>
+          <button class="text-button auth-change-email" id="change-email-button" type="button">换一个邮箱</button>
+        </form>
+
+        <p class="auth-status" id="auth-status" aria-live="polite">不需要密码。登录后，这台设备会保持登录状态。</p>
+        <button class="auth-local-button" id="continue-local-button" type="button">暂不登录，仅使用本机</button>
+        <p class="welcome-privacy"><span class="privacy-dot" aria-hidden="true"></span>只有你能读取自己的记录</p>
+      </div>
+    </section>
+
     <dialog class="modal confirm-modal" id="confirm-modal">
       <form method="dialog" class="modal-card">
         <div class="confirm-icon">!</div>
@@ -556,6 +615,7 @@
     </div>
 
     <audio id="ambient-audio" src="./assets/ambient-dawn.wav" preload="auto" loop></audio>
+    <script src="./supabase-config.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

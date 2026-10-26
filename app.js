@@ -6,6 +6,10 @@
   const MUSIC_PREFERENCE_KEY = "rijin-music-enabled-v1";
   const MUSIC_VOLUME_KEY = "rijin-music-volume-v1";
   const IOS_INSTALL_TIP_KEY = "rijin-ios-install-tip-dismissed-v1";
+  const AUTH_SESSION_KEY = "rijin-supabase-session-v1";
+  const LOCAL_ONLY_KEY = "rijin-local-only-v1";
+  const DEVICE_ID_KEY = "rijin-device-id-v1";
+  const SUPABASE = window.RIJIN_SUPABASE || {};
   const COLORS = ["#61715f", "#d86e59", "#c69a42", "#718390", "#9a7b68", "#8b7f9c"];
   const EMOJIS = ["📖", "🏃", "✍️", "🌿", "💧", "🧘", "💼", "🎧", "☀️", "🍵"];
   const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -32,11 +36,17 @@
   };
 
   let state = loadState();
+  let authSession = loadAuthSession();
+  let authEmail = "";
   let noteTimer = null;
   let toastTimer = null;
   let toastActionHandler = null;
   let lastDeletedExtra = null;
   let pendingConfirmAction = null;
+  let syncTimer = null;
+  let syncInFlight = false;
+  let applyingRemote = false;
+  let lastSyncedAt = null;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -102,6 +112,8 @@
     return {
       version: 1,
       createdAt: new Date().toISOString(),
+      updatedAt: Date.now(),
+      freshSeed: true,
       habits: [
         {
           id: uid("habit"),
@@ -154,6 +166,8 @@
     const normalized = {
       version: 1,
       createdAt: candidate.createdAt || new Date().toISOString(),
+      updatedAt: Number(candidate.updatedAt) || Date.parse(candidate.createdAt) || 0,
+      freshSeed: false,
       habits: candidate.habits
         .filter((habit) => habit && habit.id && habit.title)
         .map((habit, index) => ({
@@ -190,9 +204,15 @@
     return normalized;
   }
 
-  function persist() {
+  function persist(options = {}) {
+    const { touch = true, schedule = true } = options;
+    if (touch && !applyingRemote) {
+      state.updatedAt = Date.now();
+      state.freshSeed = false;
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (schedule && authSession) scheduleSync();
     } catch (error) {
       console.error("Could not save data:", error);
       showToast("保存失败，请导出备份");
@@ -319,6 +339,7 @@
     renderToday();
     renderReview();
     renderHabits();
+    renderCloudAccount();
   }
 
   function renderChrome() {
@@ -963,6 +984,377 @@
     }
   }
 
+  function loadAuthSession() {
+    try {
+      const hash = new URLSearchParams(location.hash.startsWith("#") ? location.hash.slice(1) : "");
+      if (hash.get("access_token") && hash.get("refresh_token")) {
+        const session = {
+          access_token: hash.get("access_token"),
+          refresh_token: hash.get("refresh_token"),
+          expires_at: Date.now() + Number(hash.get("expires_in") || 3600) * 1000,
+          user: null,
+        };
+        localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+        history.replaceState(null, "", `${location.pathname}${location.search}`);
+        return session;
+      }
+      const raw = localStorage.getItem(AUTH_SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveAuthSession(payload) {
+    authSession = {
+      access_token: payload.access_token,
+      refresh_token: payload.refresh_token,
+      expires_at: Date.now() + Number(payload.expires_in || 3600) * 1000,
+      user: payload.user || authSession?.user || null,
+    };
+    try {
+      localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(authSession));
+    } catch {
+      showToast("无法保存登录状态");
+    }
+    return authSession;
+  }
+
+  function clearAuthSession() {
+    authSession = null;
+    authEmail = "";
+    try {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+    } catch {
+      // Signing out locally still clears the in-memory session.
+    }
+  }
+
+  function deviceId() {
+    try {
+      let value = localStorage.getItem(DEVICE_ID_KEY);
+      if (!value) {
+        value = uid("device");
+        localStorage.setItem(DEVICE_ID_KEY, value);
+      }
+      return value;
+    } catch {
+      return "browser-session";
+    }
+  }
+
+  async function supabaseRequest(path, options = {}) {
+    if (!SUPABASE.url || !SUPABASE.publishableKey) {
+      throw new Error("云端服务尚未配置");
+    }
+
+    let token = authSession?.access_token;
+    if (options.useAuth !== false) {
+      if (!authSession) throw new Error("请先登录");
+      await refreshAuthSession();
+      token = authSession.access_token;
+    }
+
+    const headers = {
+      apikey: SUPABASE.publishableKey,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetch(`${SUPABASE.url}${path}`, {
+      method: options.method || "GET",
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+    const text = await response.text();
+    let payload = null;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = text;
+    }
+    if (!response.ok) {
+      const message =
+        payload?.msg ||
+        payload?.message ||
+        payload?.error_description ||
+        payload?.error ||
+        `请求失败 (${response.status})`;
+      throw new Error(message);
+    }
+    return payload;
+  }
+
+  async function refreshAuthSession() {
+    if (!authSession) return null;
+    if (Number(authSession.expires_at) > Date.now() + 60_000) return authSession;
+    const refreshed = await supabaseRequest("/auth/v1/token?grant_type=refresh_token", {
+      method: "POST",
+      useAuth: false,
+      body: { refresh_token: authSession.refresh_token },
+    });
+    saveAuthSession(refreshed);
+    if (!authSession.user) authSession.user = await fetchCurrentUser();
+    return authSession;
+  }
+
+  async function fetchCurrentUser() {
+    const user = await supabaseRequest("/auth/v1/user");
+    if (authSession) {
+      authSession.user = user;
+      try {
+        localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(authSession));
+      } catch {
+        // Current in-memory login still remains valid.
+      }
+    }
+    return user;
+  }
+
+  function setSyncStatus(status, text) {
+    const pill = $("#sync-pill");
+    pill.dataset.state = status;
+    $("#sync-status-text").textContent = text;
+    pill.title =
+      status === "synced"
+        ? "云端已同步，点击再次检查"
+        : status === "syncing"
+          ? "正在保存到云端"
+          : status === "offline"
+            ? "网络不可用，记录仍保存在本机"
+            : "点击登录并开启云端同步";
+  }
+
+  function renderCloudAccount() {
+    const email = authSession?.user?.email;
+    $("#cloud-account-email").textContent = email
+      ? `${email} · ${lastSyncedAt ? `上次同步 ${formatTime(lastSyncedAt.toISOString())}` : "等待首次同步"}`
+      : "尚未登录，数据目前只保存在本机。";
+    $("#manual-sync").textContent = authSession ? "立即同步" : "登录并同步";
+    $("#sign-out-button").hidden = !authSession;
+  }
+
+  function showAuthScreen(options = {}) {
+    if (authSession) return;
+    const welcome = $("#welcome-screen");
+    if (!welcome.hidden && !welcome.classList.contains("is-hidden") && !options.force) return;
+    const screen = $("#auth-screen");
+    screen.hidden = false;
+    if (options.message) setAuthStatus(options.message, options.status || "");
+    window.setTimeout(() => $("#auth-email").focus(), 80);
+    renderCloudAccount();
+  }
+
+  function hideAuthScreen() {
+    $("#auth-screen").hidden = true;
+  }
+
+  function setAuthStatus(message, status = "") {
+    const element = $("#auth-status");
+    element.textContent = message;
+    element.dataset.state = status;
+  }
+
+  async function sendLoginCode(email) {
+    return supabaseRequest("/auth/v1/otp", {
+      method: "POST",
+      useAuth: false,
+      body: { email, create_user: true },
+    });
+  }
+
+  async function verifyLoginCode(email, token) {
+    const payload = await supabaseRequest("/auth/v1/verify", {
+      method: "POST",
+      useAuth: false,
+      body: { type: "email", email, token },
+    });
+    saveAuthSession(payload);
+    if (!authSession.user) await fetchCurrentUser();
+    storePreference(LOCAL_ONLY_KEY, "false");
+    hideAuthScreen();
+    renderCloudAccount();
+    await syncWorkbench({ initial: true });
+  }
+
+  function scheduleSync() {
+    if (!authSession || !navigator.onLine) {
+      if (authSession && !navigator.onLine) setSyncStatus("offline", "离线待同步");
+      return;
+    }
+    clearTimeout(syncTimer);
+    syncTimer = window.setTimeout(() => syncWorkbench(), 850);
+  }
+
+  async function applyCloudState(remote) {
+    const cloudState = normalizeState(remote.data || {});
+    cloudState.updatedAt = Number(remote.client_updated_at) || 0;
+    applyingRemote = true;
+    state = cloudState;
+    persist({ touch: false, schedule: false });
+    applyingRemote = false;
+    renderAll();
+  }
+
+  async function pushCloudState() {
+    const userId = authSession?.user?.id;
+    if (!userId) throw new Error("登录信息不完整");
+    const cloudData = { ...state, freshSeed: false };
+    await supabaseRequest("/rest/v1/workbenches?on_conflict=user_id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: {
+        user_id: userId,
+        data: cloudData,
+        client_updated_at: Number(state.updatedAt) || Date.now(),
+        device_id: deviceId(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+    state.freshSeed = false;
+    persist({ touch: false, schedule: false });
+  }
+
+  async function syncWorkbench(options = {}) {
+    if (!authSession || syncInFlight) return;
+    if (!navigator.onLine) {
+      setSyncStatus("offline", "离线待同步");
+      return;
+    }
+
+    syncInFlight = true;
+    setSyncStatus("syncing", "正在同步");
+    try {
+      await refreshAuthSession();
+      if (!authSession.user) await fetchCurrentUser();
+      const userId = authSession.user.id;
+      const rows = await supabaseRequest(
+        `/rest/v1/workbenches?select=*&user_id=eq.${encodeURIComponent(userId)}&limit=1`
+      );
+      const remote = rows?.[0];
+      const localUpdatedAt = Number(state.updatedAt) || 0;
+      const remoteUpdatedAt = Number(remote?.client_updated_at) || 0;
+
+      if (!remote || (!state.freshSeed && localUpdatedAt > remoteUpdatedAt)) {
+        await pushCloudState();
+      } else if (state.freshSeed || remoteUpdatedAt >= localUpdatedAt) {
+        await applyCloudState(remote);
+      }
+
+      lastSyncedAt = new Date();
+      setSyncStatus("synced", "已同步");
+      renderCloudAccount();
+    } catch (error) {
+      if (!navigator.onLine) {
+        setSyncStatus("offline", "离线待同步");
+      } else {
+        setSyncStatus("offline", "同步异常");
+        if (!options.quiet) showToast(`同步失败：${error.message}`);
+      }
+    } finally {
+      syncInFlight = false;
+    }
+  }
+
+  function initAuthUi() {
+    renderCloudAccount();
+    if (!authSession && readStoredFlag(LOCAL_ONLY_KEY) !== "true") {
+      showAuthScreen();
+    }
+
+    $("#email-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = $("#auth-email").value.trim().toLowerCase();
+      if (!email) return;
+      authEmail = email;
+      const button = $("#send-code-button");
+      button.disabled = true;
+      setAuthStatus("正在发送登录验证码…");
+      try {
+        await sendLoginCode(email);
+        $("#email-form").hidden = true;
+        $("#code-form").hidden = false;
+        $("#code-form").dataset.email = email;
+        setAuthStatus(`验证码已发送到 ${email}，请在邮箱中查看。`, "success");
+        window.setTimeout(() => $("#auth-code").focus(), 80);
+      } catch (error) {
+        setAuthStatus(`发送失败：${error.message}`, "error");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $("#code-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const code = $("#auth-code").value.trim();
+      const email = $("#code-form").dataset.email || authEmail;
+      if (!/^\d{6,10}$/.test(code)) {
+        setAuthStatus("请输入邮件中的数字验证码。", "error");
+        return;
+      }
+      const button = $("#verify-code-button");
+      button.disabled = true;
+      setAuthStatus("正在验证并恢复云端记录…");
+      try {
+        await verifyLoginCode(email, code);
+        setAuthStatus("登录成功，记录会自动同步。", "success");
+        showToast("云端同步已开启");
+      } catch (error) {
+        setAuthStatus(`登录失败：${error.message}`, "error");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $("#change-email-button").addEventListener("click", () => {
+      $("#code-form").hidden = true;
+      $("#email-form").hidden = false;
+      setAuthStatus("不需要密码。登录后，这台设备会保持登录状态。");
+      $("#auth-email").focus();
+    });
+
+    $("#continue-local-button").addEventListener("click", () => {
+      storePreference(LOCAL_ONLY_KEY, "true");
+      hideAuthScreen();
+      setSyncStatus("offline", "仅本机");
+      showToast("当前记录只保存在本机");
+    });
+
+    $("#sync-pill").addEventListener("click", () => {
+      if (authSession) syncWorkbench();
+      else showAuthScreen({ force: true });
+    });
+
+    $("#manual-sync").addEventListener("click", () => {
+      if (authSession) syncWorkbench();
+      else showAuthScreen({ force: true });
+    });
+
+    $("#sign-out-button").addEventListener("click", () => {
+      if (!authSession) return;
+      openConfirm(
+        "退出云端账号？",
+        "云端记录不会被删除，这台设备上的数据也会保留。下次登录同一个邮箱即可恢复同步。",
+        "退出登录",
+        () => {
+          clearAuthSession();
+          storePreference(LOCAL_ONLY_KEY, "false");
+          setSyncStatus("offline", "未登录");
+          renderCloudAccount();
+          showAuthScreen({ force: true, message: "已退出登录，本机记录仍然保留。" });
+        }
+      );
+    });
+
+    window.addEventListener("online", () => {
+      if (authSession) syncWorkbench({ quiet: true });
+    });
+    window.addEventListener("offline", () => {
+      if (authSession) setSyncStatus("offline", "离线待同步");
+    });
+  }
+
   function updateMusicUI(isPlaying) {
     const widget = $("#music-widget");
     const toggle = $("#music-toggle");
@@ -1014,6 +1406,7 @@
     window.setTimeout(() => {
       welcome.hidden = true;
     }, 520);
+    showAuthScreen();
   }
 
   async function requestPersistentStorage() {
@@ -1332,7 +1725,7 @@
     $("#clear-data").addEventListener("click", () => {
       openConfirm(
         "清空全部数据？",
-        "所有固定事项、完成记录和每日笔记都会被删除。建议先导出一份备份。",
+        "所有固定事项、完成记录和每日笔记都会被删除；如果已登录，云端同步副本也会更新为空状态。建议先导出一份备份。",
         "确认清空",
         () => {
           localStorage.removeItem(STORAGE_KEY);
@@ -1372,14 +1765,21 @@
   }
 
   function init() {
-    if (!localStorage.getItem(STORAGE_KEY)) persist();
+    if (!localStorage.getItem(STORAGE_KEY)) persist({ touch: false, schedule: false });
     bindEvents();
     initMusic();
+    initAuthUi();
     registerOfflineSupport();
     initIosInstallTip();
     if (readStoredFlag(WELCOME_SEEN_KEY) === "true") requestPersistentStorage();
     renderAll();
     setView("today", { keepScroll: true });
+    if (authSession) {
+      setSyncStatus("syncing", "正在同步");
+      window.setTimeout(() => syncWorkbench({ quiet: true }), 250);
+    } else if (readStoredFlag(LOCAL_ONLY_KEY) === "true") {
+      setSyncStatus("offline", "仅本机");
+    }
   }
 
   init();

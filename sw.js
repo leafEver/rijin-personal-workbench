@@ -1,9 +1,10 @@
-const CACHE_NAME = "rijin-shell-v2";
+const CACHE_NAME = "rijin-shell-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./supabase-config.js",
   "./manifest.webmanifest",
   "./assets/ambient-dawn.wav",
   "./assets/app-icon-192.png",
