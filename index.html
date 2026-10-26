@@ -675,14 +675,14 @@
         <div class="auth-symbol" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M4 7.5 12 13l8-5.5M4 5.5h16v13H4z"/></svg>
         </div>
-        <p class="eyebrow">保护你的每一天</p>
-        <h1 id="auth-title">用邮箱保存记录</h1>
-        <p class="auth-copy">登录后，任务、日记和统计会自动保存到你的私有云端空间。换手机也能恢复。</p>
+        <p class="eyebrow">仅限本人</p>
+        <h1 id="auth-title">登录你的私人工作台</h1>
+        <p class="auth-copy">这个版本不开放注册，只有已绑定的本人邮箱可以登录。验证码不会发送给其他邮箱。</p>
 
         <form class="auth-form" id="email-form">
-          <label class="field-label" for="auth-email">邮箱地址</label>
+          <label class="field-label" for="auth-email">已绑定的邮箱</label>
           <div class="auth-input-row">
-            <input class="modal-input" id="auth-email" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required />
+            <input class="modal-input" id="auth-email" type="email" inputmode="email" autocomplete="email" placeholder="你的已绑定邮箱" required />
             <button class="primary-button" id="send-code-button" type="submit">发送验证码</button>
           </div>
         </form>
@@ -694,8 +694,7 @@
           <button class="text-button auth-change-email" id="change-email-button" type="button">换一个邮箱</button>
         </form>
 
-        <p class="auth-status" id="auth-status" aria-live="polite">不需要密码。登录后，这台设备会保持登录状态。</p>
-        <button class="auth-local-button" id="continue-local-button" type="button">暂不登录，仅使用本机</button>
+        <p class="auth-status" id="auth-status" aria-live="polite">验证码只会发送到这个工作台绑定的邮箱。</p>
         <p class="welcome-privacy"><span class="privacy-dot" aria-hidden="true"></span>只有你能读取自己的记录</p>
       </div>
     </section>

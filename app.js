@@ -7,7 +7,6 @@
   const MUSIC_VOLUME_KEY = "rijin-music-volume-v1";
   const IOS_INSTALL_TIP_KEY = "rijin-ios-install-tip-dismissed-v1";
   const AUTH_SESSION_KEY = "rijin-supabase-session-v1";
-  const LOCAL_ONLY_KEY = "rijin-local-only-v1";
   const DEVICE_ID_KEY = "rijin-device-id-v1";
   const SUPABASE = window.RIJIN_SUPABASE || {};
   const COLORS = ["#61715f", "#d86e59", "#c69a42", "#718390", "#9a7b68", "#8b7f9c"];
@@ -1266,11 +1265,25 @@
     element.dataset.state = status;
   }
 
+  function authErrorMessage(error) {
+    const message = String(error?.message || error);
+    if (/signups? not allowed|user not found/i.test(message)) {
+      return "该邮箱不是此私人工作台绑定的邮箱。";
+    }
+    if (/security purposes|rate limit|too many/i.test(message)) {
+      return "请求过于频繁，请稍后再试。";
+    }
+    if (/token.*(expired|invalid)|invalid.*token/i.test(message)) {
+      return "验证码不正确或已经过期。";
+    }
+    return message;
+  }
+
   async function sendLoginCode(email) {
     return supabaseRequest("/auth/v1/otp", {
       method: "POST",
       useAuth: false,
-      body: { email, create_user: true },
+      body: { email, create_user: false },
     });
   }
 
@@ -1282,7 +1295,6 @@
     });
     saveAuthSession(payload);
     if (!authSession.user) await fetchCurrentUser();
-    storePreference(LOCAL_ONLY_KEY, "false");
     hideAuthScreen();
     renderCloudAccount();
     await syncWorkbench({ initial: true });
@@ -1369,9 +1381,7 @@
 
   function initAuthUi() {
     renderCloudAccount();
-    if (!authSession && readStoredFlag(LOCAL_ONLY_KEY) !== "true") {
-      showAuthScreen();
-    }
+    if (!authSession) showAuthScreen();
 
     $("#email-form").addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -1389,7 +1399,7 @@
         setAuthStatus(`验证码已发送到 ${email}，请在邮箱中查看。`, "success");
         window.setTimeout(() => $("#auth-code").focus(), 80);
       } catch (error) {
-        setAuthStatus(`发送失败：${error.message}`, "error");
+        setAuthStatus(`发送失败：${authErrorMessage(error)}`, "error");
       } finally {
         button.disabled = false;
       }
@@ -1411,7 +1421,7 @@
         setAuthStatus("登录成功，记录会自动同步。", "success");
         showToast("云端同步已开启");
       } catch (error) {
-        setAuthStatus(`登录失败：${error.message}`, "error");
+        setAuthStatus(`登录失败：${authErrorMessage(error)}`, "error");
       } finally {
         button.disabled = false;
       }
@@ -1422,13 +1432,6 @@
       $("#email-form").hidden = false;
       setAuthStatus("不需要密码。登录后，这台设备会保持登录状态。");
       $("#auth-email").focus();
-    });
-
-    $("#continue-local-button").addEventListener("click", () => {
-      storePreference(LOCAL_ONLY_KEY, "true");
-      hideAuthScreen();
-      setSyncStatus("offline", "仅本机");
-      showToast("当前记录只保存在本机");
     });
 
     $("#sync-pill").addEventListener("click", () => {
@@ -1449,10 +1452,13 @@
         "退出登录",
         () => {
           clearAuthSession();
-          storePreference(LOCAL_ONLY_KEY, "false");
+          localStorage.removeItem(STORAGE_KEY);
+          state = createSeedState();
+          persist({ touch: false, schedule: false });
+          renderAll();
           setSyncStatus("offline", "未登录");
           renderCloudAccount();
-          showAuthScreen({ force: true, message: "已退出登录，本机记录仍然保留。" });
+          showAuthScreen({ force: true, message: "已退出登录，本机缓存已清除。云端记录仍然安全保留。" });
         }
       );
     });
@@ -1910,8 +1916,6 @@
     if (authSession) {
       setSyncStatus("syncing", "正在同步");
       window.setTimeout(() => syncWorkbench({ quiet: true }), 250);
-    } else if (readStoredFlag(LOCAL_ONLY_KEY) === "true") {
-      setSyncStatus("offline", "仅本机");
     }
   }
 
