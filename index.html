@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="一个轻量、私密的个人工作台，用来安排每日固定事项、临时任务并回顾自己的成长。"
+    />
+    <title>日进 · 个人工作台</title>
+    <meta name="theme-color" content="#f5f3ed" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="日进" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="welcome-screen" id="welcome-screen" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+      <span class="welcome-orb welcome-orb-one" aria-hidden="true"></span>
+      <span class="welcome-orb welcome-orb-two" aria-hidden="true"></span>
+      <div class="welcome-panel">
+        <div class="welcome-brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 40 40" fill="none">
+              <path d="M10 22c0-8.4 6.8-15.2 15.2-15.2H29v3.8c0 8.4-6.8 15.2-15.2 15.2H10V22Z" fill="currentColor"/>
+              <path d="M11 29c3.4-6.2 8.1-10.9 14.5-14.5" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M10 30h20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span>
+            <strong>日进</strong>
+            <small>把日子过成积累</small>
+          </span>
+        </div>
+        <div class="welcome-rings" aria-hidden="true">
+          <span></span><span></span><span></span>
+          <i>✦</i>
+        </div>
+        <p class="welcome-kicker">留一点安静给自己</p>
+        <h1 id="welcome-title">把今天，<br />慢慢做好。</h1>
+        <p class="welcome-copy">固定事项已经为你准备好。选一种喜欢的方式，开始今天的节奏。</p>
+        <div class="welcome-actions">
+          <button class="welcome-music-button" id="welcome-music" type="button">
+            <span class="welcome-equalizer" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span>
+              <strong>带上背景音乐进入</strong>
+              <small>林间晨光 · 舒缓环境音</small>
+            </span>
+            <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+          </button>
+          <button class="welcome-silent-button" id="welcome-silent" type="button">安静进入</button>
+        </div>
+        <p class="welcome-privacy">
+          <span class="privacy-dot" aria-hidden="true"></span>
+          音乐与记录都只保存在本机
+        </p>
+      </div>
+      <p class="welcome-footer">今天也有一件值得慢慢做的事</p>
+    </div>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" data-view-link="today" aria-label="回到今天">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 40 40" fill="none">
+              <path d="M10 22c0-8.4 6.8-15.2 15.2-15.2H29v3.8c0 8.4-6.8 15.2-15.2 15.2H10V22Z" fill="currentColor"/>
+              <path d="M11 29c3.4-6.2 8.1-10.9 14.5-14.5" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M10 30h20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span>
+            <strong>日进</strong>
+            <small>把日子过成积累</small>
+          </span>
+        </a>
+
+        <nav class="main-nav" aria-label="主要导航">
+          <button class="nav-item is-active" type="button" data-view="today">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 4.75h14a1.25 1.25 0 0 1 1.25 1.25v14H3.75v-14A1.25 1.25 0 0 1 5 4.75Z"/><path d="M8 2.75v4M16 2.75v4M3.75 9.25h16.5M8 13h2M14 13h2M8 16.75h2M14 16.75h2"/></svg>
+            </span>
+            <span>今天</span>
+            <kbd>⌘ 1</kbd>
+          </button>
+          <button class="nav-item" type="button" data-view="review">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 19V9.5M10 19V4.5M16 19v-6M22 19H2"/></svg>
+            </span>
+            <span>回顾</span>
+            <kbd>⌘ 2</kbd>
+          </button>
+          <button class="nav-item" type="button" data-view="habits">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M20.5 4.5v12a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z"/><path d="M8 2v5M16 2v5M5.5 9.5h13M8.5 13h2M13.5 13h2M8.5 16.5h2"/></svg>
+            </span>
+            <span>固定事项</span>
+            <kbd>⌘ 3</kbd>
+          </button>
+        </nav>
+
+        <div class="sidebar-note">
+          <span class="note-spark" aria-hidden="true">✦</span>
+          <p id="sidebar-insight">今天完成一件小事，也算认真生活。</p>
+          <button class="text-button" type="button" data-view-link="review">看看最近的自己 <span>→</span></button>
+        </div>
+
+        <div class="sidebar-footer">
+          <span class="privacy-dot" aria-hidden="true"></span>
+          <span>数据只保存在本机</span>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <button class="mobile-brand" type="button" data-view-link="today" aria-label="回到今天">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 40 40" fill="none">
+                <path d="M10 22c0-8.4 6.8-15.2 15.2-15.2H29v3.8c0 8.4-6.8 15.2-15.2 15.2H10V22Z" fill="currentColor"/>
+                <path d="M11 29c3.4-6.2 8.1-10.9 14.5-14.5" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+                <path d="M10 30h20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+              </svg>
+            </span>
+            <strong>日进</strong>
+          </button>
+          <div class="date-badge">
+            <span id="topbar-weekday">星期一</span>
+            <strong id="topbar-date">10月26日</strong>
+          </div>
+          <div class="topbar-actions">
+            <div class="music-widget" id="music-widget">
+              <button class="music-control" id="music-toggle" type="button" aria-label="播放背景音乐" aria-pressed="false" title="播放 / 暂停背景音乐">
+                <span class="music-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                <span class="music-meta">
+                  <strong>林间晨光</strong>
+                  <small id="music-status">轻触播放</small>
+                </span>
+              </button>
+              <label class="volume-control">
+                <span class="sr-only">背景音乐音量</span>
+                <input id="music-volume" type="range" min="0" max="1" step="0.01" value="0.24" aria-label="背景音乐音量" />
+              </label>
+            </div>
+            <button class="icon-button" id="quick-add-button" type="button" aria-label="快速添加临时事项" title="快速添加">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button class="avatar-button" type="button" data-view-link="habits" aria-label="打开设置">我</button>
+          </div>
+        </header>
+
+        <section class="view is-active" id="view-today" data-view-panel="today">
+          <div class="view-inner today-view">
+            <div class="page-intro reveal">
+              <div>
+                <p class="eyebrow" id="greeting">上午好</p>
+                <h1>今天，把重要的事做好。</h1>
+                <p class="intro-copy">不必追赶所有事情，只把眼前这几件一点点完成。</p>
+              </div>
+              <button class="secondary-button desktop-only" type="button" data-view-link="habits">
+                <svg viewBox="0 0 24 24"><path d="M12 8.5v7M8.5 12h7"/><circle cx="12" cy="12" r="9"/></svg>
+                管理固定事项
+              </button>
+            </div>
+
+            <section class="today-overview reveal delay-1" aria-label="今日概览">
+              <div class="progress-block">
+                <div class="progress-ring" id="today-progress-ring" style="--progress: 0deg">
+                  <div class="progress-ring-inner">
+                    <strong id="today-progress-value">0%</strong>
+                    <span>今日完成</span>
+                  </div>
+                </div>
+                <div class="progress-copy">
+                  <span class="section-kicker">今日进度</span>
+                  <h2 id="today-progress-title">从第一件小事开始</h2>
+                  <p id="today-progress-copy">还有 0 件待完成</p>
+                </div>
+              </div>
+              <div class="overview-divider" aria-hidden="true"></div>
+              <div class="mini-stat">
+                <span class="mini-stat-icon warm" aria-hidden="true">↗</span>
+                <div>
+                  <span>连续有完成</span>
+                  <strong><span id="current-streak">0</span><small> 天</small></strong>
+                </div>
+              </div>
+              <div class="mini-stat">
+                <span class="mini-stat-icon sage" aria-hidden="true">✓</span>
+                <div>
+                  <span>累计完成</span>
+                  <strong><span id="all-time-completed">0</span><small> 件</small></strong>
+                </div>
+              </div>
+            </section>
+
+            <div class="today-grid">
+              <section class="panel task-panel reveal delay-2">
+                <div class="panel-heading">
+                  <div>
+                    <div class="heading-with-badge">
+                      <h2>每日固定</h2>
+                      <span class="soft-badge" id="habit-total-badge">0 项</span>
+                    </div>
+                    <p>每天自动出现在这里的习惯</p>
+                  </div>
+                  <button class="icon-button subtle" type="button" data-view-link="habits" aria-label="管理固定事项" title="管理固定事项">
+                    <svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+                  </button>
+                </div>
+                <div class="task-list" id="habit-task-list"></div>
+              </section>
+
+              <section class="panel task-panel reveal delay-3">
+                <div class="panel-heading">
+                  <div>
+                    <div class="heading-with-badge">
+                      <h2>今日待办</h2>
+                      <span class="soft-badge neutral" id="extra-total-badge">0 项</span>
+                    </div>
+                    <p>只为今天出现的一次性事项</p>
+                  </div>
+                </div>
+                <form class="quick-task-form" id="quick-task-form">
+                  <label for="quick-task-input" class="sr-only">添加今日待办</label>
+                  <input id="quick-task-input" type="text" maxlength="80" autocomplete="off" placeholder="写下今天还要做的一件事…" />
+                  <button type="submit" aria-label="添加事项">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </form>
+                <div class="task-list extra-list" id="extra-task-list"></div>
+              </section>
+            </div>
+
+            <section class="reflection-panel reveal delay-4">
+              <div class="reflection-heading">
+                <span class="reflection-mark" aria-hidden="true">“</span>
+                <div>
+                  <h3>今天，想留下一点什么？</h3>
+                  <p>一句收获、一点感受，都会成为以后的线索。</p>
+                </div>
+              </div>
+              <label class="sr-only" for="daily-note">今日记录</label>
+              <textarea id="daily-note" maxlength="500" rows="3" placeholder="例如：今天终于把拖了很久的事情处理完了。虽然不快，但有在向前。"></textarea>
+              <div class="reflection-footer">
+                <span id="note-status">自动保存</span>
+                <span id="note-count">0 / 500</span>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-review" data-view-panel="review">
+          <div class="view-inner review-view">
+            <div class="page-intro review-intro">
+              <div>
+                <p class="eyebrow">看见时间</p>
+                <h1>你的每一次完成，都算数。</h1>
+                <p class="intro-copy">这里没有评判，只有你真实走过的轨迹。</p>
+              </div>
+              <div class="period-switcher" role="tablist" aria-label="回顾周期">
+                <button class="period-button is-active" type="button" data-period="day" role="tab" aria-selected="true">日</button>
+                <button class="period-button" type="button" data-period="month" role="tab" aria-selected="false">月</button>
+                <button class="period-button" type="button" data-period="year" role="tab" aria-selected="false">年</button>
+              </div>
+            </div>
+
+            <div class="period-toolbar">
+              <button class="round-button" id="period-prev" type="button" aria-label="上一个周期">
+                <svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg>
+              </button>
+              <h2 id="period-label">今天</h2>
+              <button class="round-button" id="period-next" type="button" aria-label="下一个周期">
+                <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+              </button>
+              <button class="text-button period-today-button" id="period-today" type="button">回到今天</button>
+            </div>
+
+            <section class="metric-grid" aria-label="周期统计">
+              <article class="metric-card metric-primary">
+                <div class="metric-label">
+                  <span class="metric-icon">✓</span>
+                  <span>完成事项</span>
+                </div>
+                <strong><span id="metric-completed">0</span><small> 件</small></strong>
+                <p id="metric-completed-detail">今天的完成记录</p>
+              </article>
+              <article class="metric-card">
+                <div class="metric-label">
+                  <span class="metric-icon amber">◎</span>
+                  <span>完成率</span>
+                </div>
+                <strong><span id="metric-rate">0</span><small>%</small></strong>
+                <p id="metric-rate-detail">还没有安排事项</p>
+              </article>
+              <article class="metric-card">
+                <div class="metric-label">
+                  <span class="metric-icon sage">↗</span>
+                  <span>有完成的天数</span>
+                </div>
+                <strong><span id="metric-active-days">0</span><small> 天</small></strong>
+                <p id="metric-active-detail">持续积累中</p>
+              </article>
+              <article class="metric-card">
+                <div class="metric-label">
+                  <span class="metric-icon coral">♨</span>
+                  <span>连续有完成</span>
+                </div>
+                <strong><span id="metric-streak">0</span><small> 天</small></strong>
+                <p id="metric-streak-detail">今天完成一件就开始了</p>
+              </article>
+            </section>
+
+            <div class="review-main-grid">
+              <section class="panel trend-panel">
+                <div class="panel-heading compact">
+                  <div>
+                    <h2 id="trend-title">近 14 天</h2>
+                    <p id="trend-subtitle">每天完成了多少件事</p>
+                  </div>
+                  <span class="chart-legend"><i></i> 完成事项</span>
+                </div>
+                <div class="bar-chart" id="trend-chart" aria-label="完成事项趋势图"></div>
+              </section>
+
+              <section class="panel calendar-panel">
+                <div class="calendar-heading">
+                  <div>
+                    <h2 id="calendar-title">本月足迹</h2>
+                    <p>颜色越深，完成得越多</p>
+                  </div>
+                  <div class="calendar-controls">
+                    <button class="icon-button small" id="calendar-prev" type="button" aria-label="上个月">
+                      <svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg>
+                    </button>
+                    <button class="icon-button small" id="calendar-next" type="button" aria-label="下个月">
+                      <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="calendar-weekdays" aria-hidden="true">
+                  <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+                </div>
+                <div class="calendar-grid" id="calendar-grid"></div>
+                <div class="calendar-legend"><span>少</span><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>多</span></div>
+              </section>
+            </div>
+
+            <div class="review-bottom-grid">
+              <section class="panel activity-panel">
+                <div class="panel-heading compact">
+                  <div>
+                    <h2 id="activity-title">今天做了什么</h2>
+                    <p>每一件完成的小事都在这里</p>
+                  </div>
+                  <span class="soft-badge neutral" id="activity-count">0 项</span>
+                </div>
+                <div class="activity-list" id="activity-list"></div>
+              </section>
+
+              <section class="panel category-panel">
+                <div class="panel-heading compact">
+                  <div>
+                    <h2>时间花在哪里</h2>
+                    <p>按事项分类看看投入</p>
+                  </div>
+                </div>
+                <div class="category-summary" id="category-summary"></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-habits" data-view-panel="habits">
+          <div class="view-inner habits-view">
+            <div class="page-intro">
+              <div>
+                <p class="eyebrow">建立节奏</p>
+                <h1>把重要的日常，固定下来。</h1>
+                <p class="intro-copy">固定事项每天会自动出现在今日清单，不需要重复填写。</p>
+              </div>
+              <button class="primary-button" id="add-habit-button" type="button">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                新增固定事项
+              </button>
+            </div>
+
+            <section class="habit-intro-card">
+              <div class="habit-intro-art" aria-hidden="true">
+                <span class="orbit orbit-one"></span>
+                <span class="orbit orbit-two"></span>
+                <span class="sprout">✦</span>
+              </div>
+              <div>
+                <span class="section-kicker">少而稳定，胜过一时用力</span>
+                <h2>从 3 件真正重要的小事开始</h2>
+                <p>固定事项不是任务越多越好。先让一个简单的动作，自然地进入每一天。</p>
+              </div>
+              <div class="habit-intro-stat">
+                <strong id="habit-count-large">0</strong>
+                <span>项每日固定</span>
+              </div>
+            </section>
+
+            <div class="habit-list-heading">
+              <div>
+                <h2>我的固定事项</h2>
+                <p>停用后会保留历史记录，但不再出现在今天的清单里。</p>
+              </div>
+            </div>
+            <div class="habit-cards" id="habit-cards"></div>
+
+            <section class="data-panel">
+              <div>
+                <h2>数据与备份</h2>
+                <p>所有记录仅存储在当前浏览器。定期导出备份，换设备时再导入即可。</p>
+              </div>
+              <div class="data-actions">
+                <button class="secondary-button" id="export-data" type="button">导出备份</button>
+                <label class="secondary-button file-button">
+                  导入备份
+                  <input id="import-data" type="file" accept="application/json" />
+                </label>
+                <button class="danger-text-button" id="clear-data" type="button">清空全部数据</button>
+              </div>
+            </section>
+
+            <section class="ios-install-card" id="ios-install-card" hidden>
+              <div class="ios-install-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10 5h4M11 18.5h2"/></svg>
+              </div>
+              <div class="ios-install-copy">
+                <span class="section-kicker">iPhone 长期使用</span>
+                <h2>把“日进”放到主屏幕</h2>
+                <p>以后从主屏幕直接打开，像普通 App 一样使用。</p>
+              </div>
+              <ol class="ios-install-steps">
+                <li><span>1</span>用 Safari 打开本页</li>
+                <li><span>2</span>点底部分享按钮</li>
+                <li><span>3</span>选择“添加到主屏幕”</li>
+              </ol>
+              <button class="icon-button small" id="dismiss-ios-install" type="button" aria-label="关闭安装提示">
+                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+              </button>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <nav class="mobile-nav" aria-label="移动端导航">
+        <button class="is-active" type="button" data-view="today">
+          <svg viewBox="0 0 24 24"><path d="M5 4.75h14a1.25 1.25 0 0 1 1.25 1.25v14H3.75v-14A1.25 1.25 0 0 1 5 4.75Z"/><path d="M8 2.75v4M16 2.75v4M3.75 9.25h16.5"/></svg>
+          <span>今天</span>
+        </button>
+        <button type="button" data-view="review">
+          <svg viewBox="0 0 24 24"><path d="M4 19V9.5M10 19V4.5M16 19v-6M22 19H2"/></svg>
+          <span>回顾</span>
+        </button>
+        <button type="button" data-view="habits">
+          <svg viewBox="0 0 24 24"><path d="M20.5 4.5v12a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z"/><path d="M8 2v5M16 2v5M5.5 9.5h13"/></svg>
+          <span>固定事项</span>
+        </button>
+      </nav>
+    </div>
+
+    <dialog class="modal" id="habit-modal">
+      <form method="dialog" class="modal-card" id="habit-form">
+        <div class="modal-heading">
+          <div>
+            <span class="eyebrow" id="habit-modal-eyebrow">新的开始</span>
+            <h2 id="habit-modal-title">新增固定事项</h2>
+          </div>
+          <button class="icon-button" value="cancel" type="submit" formnovalidate aria-label="关闭">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+
+        <input type="hidden" id="habit-id" />
+        <label class="field-label" for="habit-title">要做的事</label>
+        <input class="modal-input" id="habit-title" name="title" type="text" maxlength="30" placeholder="例如：阅读 20 分钟" required autocomplete="off" />
+
+        <div class="modal-two-columns">
+          <div>
+            <span class="field-label">选一个图标</span>
+            <div class="emoji-picker" id="emoji-picker" role="radiogroup" aria-label="图标"></div>
+          </div>
+          <div>
+            <label class="field-label" for="habit-category">分类</label>
+            <select class="modal-input" id="habit-category">
+              <option value="成长">成长</option>
+              <option value="健康">健康</option>
+              <option value="工作">工作</option>
+              <option value="生活">生活</option>
+              <option value="关系">关系</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+        </div>
+
+        <span class="field-label">标记颜色</span>
+        <div class="color-picker" id="color-picker" role="radiogroup" aria-label="标记颜色"></div>
+
+        <div class="modal-actions">
+          <button class="ghost-button" value="cancel" type="submit" formnovalidate>取消</button>
+          <button class="primary-button" id="save-habit-button" value="default" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal quick-modal" id="quick-modal">
+      <form method="dialog" class="modal-card" id="quick-modal-form">
+        <div class="modal-heading">
+          <div>
+            <span class="eyebrow">只为今天</span>
+            <h2>添加临时事项</h2>
+          </div>
+          <button class="icon-button" value="cancel" type="submit" formnovalidate aria-label="关闭">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <label class="field-label" for="quick-modal-input">要做什么</label>
+        <input class="modal-input" id="quick-modal-input" type="text" maxlength="80" placeholder="例如：给妈妈打电话" required autocomplete="off" />
+        <label class="field-label" for="quick-modal-category">归到哪一类</label>
+        <select class="modal-input" id="quick-modal-category">
+          <option value="其他">其他</option>
+          <option value="工作">工作</option>
+          <option value="成长">成长</option>
+          <option value="健康">健康</option>
+          <option value="生活">生活</option>
+          <option value="关系">关系</option>
+        </select>
+        <div class="modal-actions">
+          <button class="ghost-button" value="cancel" type="submit" formnovalidate>取消</button>
+          <button class="primary-button" value="default" type="submit">加入今天</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal confirm-modal" id="confirm-modal">
+      <form method="dialog" class="modal-card">
+        <div class="confirm-icon">!</div>
+        <h2 id="confirm-title">确认操作</h2>
+        <p id="confirm-copy">此操作无法撤销。</p>
+        <div class="modal-actions">
+          <button class="ghost-button" value="cancel" type="submit">再想想</button>
+          <button class="danger-button" id="confirm-ok" value="default" type="submit">确认</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <span class="toast-dot"></span>
+      <span id="toast-message">已保存</span>
+      <button class="toast-action" id="toast-action" type="button">撤销</button>
+    </div>
+
+    <audio id="ambient-audio" src="./assets/ambient-dawn.wav" preload="auto" loop></audio>
+    <script src="./app.js"></script>
+  </body>
+</html>

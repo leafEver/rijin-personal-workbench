@@ -1,0 +1,35 @@
+{
+  "name": "日进 · 个人工作台",
+  "short_name": "日进",
+  "description": "安排每日固定事项、记录临时任务，并回顾自己的长期积累。",
+  "lang": "zh-CN",
+  "id": "./",
+  "start_url": "./index.html?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#f5f3ed",
+  "theme_color": "#61715f",
+  "categories": ["productivity", "lifestyle"],
+  "icons": [
+    {
+      "src": "./assets/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
