@@ -375,7 +375,7 @@
     }
   }
 
-  function taskTemplate({ task, completed, completedAt, type, log, deletable = true }) {
+  function taskTemplate({ task, completed, completedAt, type, log, day, deletable = true }) {
     const color = task.color || categoryColor(task.category);
     const typeMeta =
       type === "habit"
@@ -391,6 +391,7 @@
         style="--task-color: ${escapeHtml(color)}"
         data-task-type="${type}"
         data-task-id="${escapeHtml(task.id)}"
+        data-task-day="${escapeHtml(day || ui.activePlanDate)}"
       >
         <button class="task-check" type="button" data-action="toggle-task" aria-label="${completed ? "标记为未完成" : "标记为完成"}">
           <svg viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></svg>
@@ -418,6 +419,37 @@
         </div>
       </article>
     `;
+  }
+
+  function weeklyItemsForKeys(keys) {
+    return keys.flatMap((key) => {
+      const day = state.days[key];
+      if (!day) return [];
+      const entries = [];
+      habitsForDate(key).forEach((habit) => {
+        if (habit.taskType !== "weekly") return;
+        entries.push({
+          key,
+          type: "habit",
+          task: habit,
+          completed: Boolean(day.habits?.[habit.id]),
+          completedAt: day.habits?.[habit.id],
+          log: day.logs?.[habit.id],
+        });
+      });
+      (day.extras || []).forEach((task) => {
+        if (task.taskType !== "weekly") return;
+        entries.push({
+          key,
+          type: "extra",
+          task,
+          completed: Boolean(task.completedAt),
+          completedAt: task.completedAt,
+          log: day.logs?.[task.id],
+        });
+      });
+      return entries;
+    });
   }
 
   function renderToday() {
@@ -456,6 +488,7 @@
     const weekDates = Array.from({ length: 7 }, (_, offset) => addDays(new Date(), offset));
     const weekKeys = weekDates.map(dateKey);
     const weekStats = aggregate(weekKeys);
+    const weeklyItems = weeklyItemsForKeys(weekKeys);
     $("#week-summary").textContent = `本周 ${weekStats.completed} / ${weekStats.planned}`;
     $("#week-strip").innerHTML = weekDates.map((date, offset) => {
       const dateValue = dateKey(date);
@@ -470,14 +503,75 @@
         </button>`;
     }).join("");
 
+    $("#weekly-task-preview").innerHTML = weeklyItems.length
+      ? weeklyItems
+          .map((item) => {
+            const date = parseKey(item.key);
+            const dayLabel = item.key === todayKey() ? "今天" : `周${SHORT_WEEKDAYS[date.getDay()]}`;
+            return `
+              <button class="weekly-preview-item ${item.completed ? "is-completed" : ""}" type="button" data-open-week-view>
+                <span class="weekly-preview-day">${dayLabel}</span>
+                <span class="weekly-preview-title">${escapeHtml(item.task.title)}</span>
+                <i>${item.completed ? "✓" : "→"}</i>
+              </button>`;
+          })
+          .join("")
+      : `<button class="weekly-preview-empty" type="button" data-add-type="weekly">本周还没有单独任务，点这里添加一件要持续推进的事 →</button>`;
+
+    $("#week-total-completed").textContent = weekStats.completed;
+    $("#week-total-rate").textContent = `${weekStats.planned ? Math.round((weekStats.completed / weekStats.planned) * 100) : 0}%`;
+    $("#week-total-tasks").textContent = weeklyItems.length;
+    const maxWeekDay = Math.max(1, ...weekDates.map((date) => getDayStats(dateKey(date)).completed));
+    $("#week-modal-chart").innerHTML = weekDates
+      .map((date) => {
+        const dateValue = dateKey(date);
+        const dateStats = getDayStats(dateValue);
+        const height = dateStats.completed ? Math.max(8, Math.round((dateStats.completed / maxWeekDay) * 100)) : 3;
+        return `
+          <div class="week-modal-column ${dateValue === todayKey() ? "is-today" : ""}" title="${formatMonthDay(date)}：完成 ${dateStats.completed}/${dateStats.planned}">
+            <span>${dateStats.completed}</span>
+            <i><b style="height:${height}%"></b></i>
+            <strong>${dateValue === todayKey() ? "今天" : `周${SHORT_WEEKDAYS[date.getDay()]}`}</strong>
+            <small>${date.getDate()}日</small>
+          </div>`;
+      })
+      .join("");
+    $("#week-modal-tasks").innerHTML = weeklyItems.length
+      ? weekKeys
+          .map((dateValue) => {
+            const items = weeklyItems.filter((item) => item.key === dateValue);
+            if (!items.length) return "";
+            return `
+              <section class="week-modal-day-group">
+                <h3>${formatMonthDay(parseKey(dateValue))} <span>周${SHORT_WEEKDAYS[parseKey(dateValue).getDay()]}</span></h3>
+                <div class="task-list">
+                  ${items
+                    .map((item) =>
+                      taskTemplate({
+                        task: item.task,
+                        type: item.type,
+                        completed: item.completed,
+                        completedAt: item.completedAt,
+                        log: item.log,
+                        day: item.key,
+                      })
+                    )
+                    .join("")}
+                </div>
+              </section>`;
+          })
+          .join("")
+      : `<div class="lane-empty">这一周还没有单独任务。可以安排一件需要几天持续推进的事。</div>`;
+
     const lanes = {
       baseline: { element: $("#baseline-task-list"), count: $("#baseline-lane-count"), items: [] },
       bonus: { element: $("#bonus-task-list"), count: $("#bonus-lane-count"), items: [] },
-      weekly: { element: $("#weekly-task-list"), count: $("#weekly-lane-count"), items: [] },
     };
     habits.forEach((habit) => {
-      lanes[habit.taskType || "baseline"].items.push({
+      const taskType = habit.taskType === "weekly" ? "bonus" : habit.taskType || "baseline";
+      lanes[taskType].items.push({
         task: habit,
+        day: key,
         type: "habit",
         completed: Boolean(day.habits?.[habit.id]),
         completedAt: day.habits?.[habit.id],
@@ -485,8 +579,10 @@
     });
     extras.forEach((task) => {
       const taskType = task.taskType || "bonus";
+      if (taskType === "weekly") return;
       lanes[taskType].items.push({
         task,
+        day: key,
         type: "extra",
         completed: Boolean(task.completedAt),
         completedAt: task.completedAt,
@@ -501,6 +597,7 @@
             .map((item) =>
               taskTemplate({
                 ...item,
+                day: key,
                 log: day.logs?.[item.task.id],
               })
             )
@@ -846,8 +943,7 @@
     if (!options.keepScroll) window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function toggleTask(type, id) {
-    const key = ui.activePlanDate;
+  function toggleTask(type, id, key = ui.activePlanDate) {
     const day = ensureDay(key);
     if (type === "habit") {
       day.habits[id] = day.habits[id] ? null : new Date().toISOString();
@@ -877,8 +973,7 @@
     showToast(key === todayKey() ? "已加入今天" : `已加入 ${formatMonthDay(parseKey(key))}`);
   }
 
-  function deleteExtraTask(id) {
-    const key = ui.activePlanDate;
+  function deleteExtraTask(id, key = ui.activePlanDate) {
     const day = ensureDay(key);
     const index = day.extras.findIndex((task) => task.id === id);
     if (index === -1) return;
@@ -1676,11 +1771,11 @@
         const item = taskButton.closest(".task-item");
         const action = taskButton.dataset.action;
         if (action === "toggle-task" && item) {
-          toggleTask(item.dataset.taskType, item.dataset.taskId);
+          toggleTask(item.dataset.taskType, item.dataset.taskId, item.dataset.taskDay);
         } else if (action === "delete-extra" && item) {
-          deleteExtraTask(item.dataset.taskId);
+          deleteExtraTask(item.dataset.taskId, item.dataset.taskDay);
         } else if (action === "open-task-log" && item) {
-          openTaskLogModal(item.dataset.taskType, item.dataset.taskId);
+          openTaskLogModal(item.dataset.taskType, item.dataset.taskId, item.dataset.taskDay);
         } else if (action === "edit-habit") {
           openHabitModal(taskButton.dataset.id);
         } else if (action === "delete-habit") {
@@ -1692,7 +1787,7 @@
       const taskMain = event.target.closest(".task-main");
       if (taskMain) {
         const item = taskMain.closest(".task-item");
-        if (item) toggleTask(item.dataset.taskType, item.dataset.taskId);
+        if (item) toggleTask(item.dataset.taskType, item.dataset.taskId, item.dataset.taskDay);
         return;
       }
 
@@ -1715,6 +1810,12 @@
         ui.activePlanDate = planDayButton.dataset.planDate;
         renderToday();
         window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
+      const weekOpenButton = event.target.closest("[data-open-week-view]");
+      if (weekOpenButton) {
+        $("#week-overview-modal").showModal();
         return;
       }
 
@@ -1760,6 +1861,13 @@
     });
 
     $("#quick-add-button").addEventListener("click", openQuickModal);
+
+    $("#open-week-view").addEventListener("click", () => {
+      $("#week-overview-modal").showModal();
+    });
+    $("#close-week-view").addEventListener("click", () => {
+      $("#week-overview-modal").close();
+    });
 
     $("#toast-action").addEventListener("click", () => {
       const action = toastActionHandler;

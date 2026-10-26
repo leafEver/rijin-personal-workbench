@@ -203,11 +203,16 @@
               <div class="week-plan-heading">
                 <div>
                   <span class="section-kicker">本周进度</span>
-                  <h2>这一周，每一天都看得见。</h2>
+                  <h2>周任务，单独放进这一周。</h2>
                 </div>
-                <span class="soft-badge neutral" id="week-summary">本周 0 / 0</span>
+                <div class="week-plan-actions">
+                  <span class="soft-badge neutral" id="week-summary">本周 0 / 0</span>
+                  <button class="text-button" id="open-week-view" type="button">展开本周视图 →</button>
+                </div>
               </div>
+              <div class="weekly-task-preview" id="weekly-task-preview"></div>
               <div class="week-strip" id="week-strip"></div>
+              <button class="lane-add week-add-button" type="button" data-add-type="weekly">＋ 添加周任务</button>
             </section>
 
             <section class="panel task-board-panel reveal delay-3">
@@ -246,18 +251,6 @@
                   <button class="lane-add" type="button" data-add-type="bonus">＋ 添加加分任务</button>
                 </section>
 
-                <section class="task-lane lane-weekly">
-                  <div class="task-lane-heading">
-                    <div>
-                      <span class="lane-mark">03</span>
-                      <h3>周任务</h3>
-                      <p>放进这一周持续推进的事</p>
-                    </div>
-                    <span id="weekly-lane-count">0 / 0</span>
-                  </div>
-                  <div class="task-list" id="weekly-task-list"></div>
-                  <button class="lane-add" type="button" data-add-type="weekly">＋ 添加周任务</button>
-                </section>
               </div>
 
               <form class="quick-task-form board-quick-form" id="quick-task-form">
@@ -658,6 +651,27 @@
           <button class="primary-button" id="save-task-log" value="default" type="submit">保存记录</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog class="modal week-overview-modal" id="week-overview-modal">
+      <div class="modal-card week-overview-card">
+        <div class="modal-heading">
+          <div>
+            <span class="eyebrow">接下来 7 天</span>
+            <h2>本周任务可视化</h2>
+          </div>
+          <button class="icon-button" id="close-week-view" type="button" aria-label="关闭">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <div class="week-overview-metrics">
+          <div><span>完成</span><strong id="week-total-completed">0</strong></div>
+          <div><span>完成率</span><strong id="week-total-rate">0%</strong></div>
+          <div><span>周任务</span><strong id="week-total-tasks">0</strong></div>
+        </div>
+        <div class="week-modal-chart" id="week-modal-chart"></div>
+        <div class="week-modal-tasks" id="week-modal-tasks"></div>
+      </div>
     </dialog>
 
     <section class="auth-screen" id="auth-screen" hidden aria-labelledby="auth-title">
