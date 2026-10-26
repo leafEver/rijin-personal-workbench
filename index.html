@@ -159,8 +159,8 @@
             <div class="page-intro reveal">
               <div>
                 <p class="eyebrow" id="greeting">上午好</p>
-                <h1>今天，把重要的事做好。</h1>
-                <p class="intro-copy">不必追赶所有事情，只把眼前这几件一点点完成。</p>
+                <h1 id="today-heading">今天，把重要的事做好。</h1>
+                <p class="intro-copy" id="today-intro-copy">不必追赶所有事情，只把眼前这几件一点点完成。</p>
               </div>
               <button class="secondary-button desktop-only" type="button" data-view-link="habits">
                 <svg viewBox="0 0 24 24"><path d="M12 8.5v7M8.5 12h7"/><circle cx="12" cy="12" r="9"/></svg>
@@ -199,43 +199,80 @@
               </div>
             </section>
 
-            <div class="today-grid">
-              <section class="panel task-panel reveal delay-2">
-                <div class="panel-heading">
-                  <div>
-                    <div class="heading-with-badge">
-                      <h2>每日固定</h2>
-                      <span class="soft-badge" id="habit-total-badge">0 项</span>
-                    </div>
-                    <p>每天自动出现在这里的习惯</p>
-                  </div>
-                  <button class="icon-button subtle" type="button" data-view-link="habits" aria-label="管理固定事项" title="管理固定事项">
-                    <svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
-                  </button>
+            <section class="week-plan-panel reveal delay-2">
+              <div class="week-plan-heading">
+                <div>
+                  <span class="section-kicker">未来 7 天</span>
+                  <h2>提前安排，也给自己留出余地。</h2>
                 </div>
-                <div class="task-list" id="habit-task-list"></div>
-              </section>
+                <span class="soft-badge neutral">点击日期查看计划</span>
+              </div>
+              <div class="week-strip" id="week-strip"></div>
+            </section>
 
-              <section class="panel task-panel reveal delay-3">
-                <div class="panel-heading">
-                  <div>
-                    <div class="heading-with-badge">
-                      <h2>今日待办</h2>
-                      <span class="soft-badge neutral" id="extra-total-badge">0 项</span>
-                    </div>
-                    <p>只为今天出现的一次性事项</p>
-                  </div>
+            <section class="panel task-board-panel reveal delay-3">
+              <div class="panel-heading task-board-heading">
+                <div>
+                  <h2 id="task-board-title">今天的任务</h2>
+                  <p>底线保稳定，加分促成长，周任务推进长期目标。</p>
                 </div>
-                <form class="quick-task-form" id="quick-task-form">
-                  <label for="quick-task-input" class="sr-only">添加今日待办</label>
-                  <input id="quick-task-input" type="text" maxlength="80" autocomplete="off" placeholder="写下今天还要做的一件事…" />
-                  <button type="submit" aria-label="添加事项">
-                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                  </button>
-                </form>
-                <div class="task-list extra-list" id="extra-task-list"></div>
-              </section>
-            </div>
+                <span class="soft-badge" id="task-board-count">0 项</span>
+              </div>
+
+              <div class="task-board">
+                <section class="task-lane lane-baseline">
+                  <div class="task-lane-heading">
+                    <div>
+                      <span class="lane-mark">01</span>
+                      <h3>底线</h3>
+                      <p>今天必须保住的事</p>
+                    </div>
+                    <span id="baseline-lane-count">0 / 0</span>
+                  </div>
+                  <div class="task-list" id="baseline-task-list"></div>
+                  <button class="lane-add" type="button" data-add-type="baseline">＋ 添加底线任务</button>
+                </section>
+
+                <section class="task-lane lane-bonus">
+                  <div class="task-lane-heading">
+                    <div>
+                      <span class="lane-mark">02</span>
+                      <h3>加分</h3>
+                      <p>完成之后会更好的事</p>
+                    </div>
+                    <span id="bonus-lane-count">0 / 0</span>
+                  </div>
+                  <div class="task-list" id="bonus-task-list"></div>
+                  <button class="lane-add" type="button" data-add-type="bonus">＋ 添加加分任务</button>
+                </section>
+
+                <section class="task-lane lane-weekly">
+                  <div class="task-lane-heading">
+                    <div>
+                      <span class="lane-mark">03</span>
+                      <h3>周任务</h3>
+                      <p>放进这一周持续推进的事</p>
+                    </div>
+                    <span id="weekly-lane-count">0 / 0</span>
+                  </div>
+                  <div class="task-list" id="weekly-task-list"></div>
+                  <button class="lane-add" type="button" data-add-type="weekly">＋ 添加周任务</button>
+                </section>
+              </div>
+
+              <form class="quick-task-form board-quick-form" id="quick-task-form">
+                <label for="quick-task-input" class="sr-only">添加计划任务</label>
+                <input id="quick-task-input" type="text" maxlength="80" autocomplete="off" placeholder="快速写下要安排的一件事…" />
+                <select id="quick-task-type-inline" aria-label="任务类型">
+                  <option value="baseline">底线</option>
+                  <option value="bonus">加分</option>
+                  <option value="weekly">周任务</option>
+                </select>
+                <button type="submit" aria-label="添加事项">
+                  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              </form>
+            </section>
 
             <section class="reflection-panel reveal delay-4">
               <div class="reflection-heading">
@@ -314,6 +351,21 @@
                 <strong><span id="metric-streak">0</span><small> 天</small></strong>
                 <p id="metric-streak-detail">今天完成一件就开始了</p>
               </article>
+            </section>
+
+            <section class="execution-strip" aria-label="执行记录统计">
+              <div>
+                <span>实际用时</span>
+                <strong><span id="metric-minutes">0</span><small> 分钟</small></strong>
+              </div>
+              <div>
+                <span>完成题量</span>
+                <strong><span id="metric-quantity">0</span><small> 题</small></strong>
+              </div>
+              <div>
+                <span>记录卡点</span>
+                <strong><span id="metric-blockers">0</span><small> 条</small></strong>
+              </div>
             </section>
 
             <div class="review-main-grid">
@@ -517,6 +569,13 @@
           </div>
         </div>
 
+        <label class="field-label" for="habit-task-type">任务类型</label>
+        <select class="modal-input" id="habit-task-type">
+          <option value="baseline">底线 · 尽量每天都做到</option>
+          <option value="bonus">加分 · 有余力时推进</option>
+          <option value="weekly">周任务 · 这一周持续去做</option>
+        </select>
+
         <span class="field-label">标记颜色</span>
         <div class="color-picker" id="color-picker" role="radiogroup" aria-label="标记颜色"></div>
 
@@ -540,18 +599,63 @@
         </div>
         <label class="field-label" for="quick-modal-input">要做什么</label>
         <input class="modal-input" id="quick-modal-input" type="text" maxlength="80" placeholder="例如：给妈妈打电话" required autocomplete="off" />
-        <label class="field-label" for="quick-modal-category">归到哪一类</label>
-        <select class="modal-input" id="quick-modal-category">
-          <option value="其他">其他</option>
-          <option value="工作">工作</option>
-          <option value="成长">成长</option>
-          <option value="健康">健康</option>
-          <option value="生活">生活</option>
-          <option value="关系">关系</option>
-        </select>
+        <div class="modal-two-columns">
+          <div>
+            <label class="field-label" for="quick-modal-type">任务类型</label>
+            <select class="modal-input" id="quick-modal-type">
+              <option value="baseline">底线</option>
+              <option value="bonus">加分</option>
+              <option value="weekly">周任务</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="quick-modal-category">分类</label>
+            <select class="modal-input" id="quick-modal-category">
+              <option value="其他">其他</option>
+              <option value="工作">工作</option>
+              <option value="成长">成长</option>
+              <option value="健康">健康</option>
+              <option value="生活">生活</option>
+              <option value="关系">关系</option>
+            </select>
+          </div>
+        </div>
         <div class="modal-actions">
           <button class="ghost-button" value="cancel" type="submit" formnovalidate>取消</button>
           <button class="primary-button" value="default" type="submit">加入今天</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal task-log-modal" id="task-log-modal">
+      <form method="dialog" class="modal-card" id="task-log-form">
+        <div class="modal-heading">
+          <div>
+            <span class="eyebrow">留下执行线索</span>
+            <h2 id="task-log-title">记录任务详情</h2>
+          </div>
+          <button class="icon-button" value="cancel" type="submit" formnovalidate aria-label="关闭">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <input type="hidden" id="task-log-day" />
+        <input type="hidden" id="task-log-type" />
+        <input type="hidden" id="task-log-id" />
+        <div class="modal-two-columns">
+          <div>
+            <label class="field-label" for="task-log-minutes">实际用时（分钟）</label>
+            <input class="modal-input" id="task-log-minutes" type="number" inputmode="numeric" min="0" max="1440" placeholder="例如：45" />
+          </div>
+          <div>
+            <label class="field-label" for="task-log-quantity">完成题量 / 数量</label>
+            <input class="modal-input" id="task-log-quantity" type="number" inputmode="numeric" min="0" max="100000" placeholder="例如：20" />
+          </div>
+        </div>
+        <label class="field-label" for="task-log-blocker">遇到的卡点</label>
+        <textarea class="modal-input task-log-textarea" id="task-log-blocker" maxlength="300" rows="3" placeholder="哪里卡住了？下次可以怎么处理？"></textarea>
+        <div class="modal-actions">
+          <button class="ghost-button" value="cancel" type="submit" formnovalidate>取消</button>
+          <button class="primary-button" id="save-task-log" value="default" type="submit">保存记录</button>
         </div>
       </form>
     </dialog>

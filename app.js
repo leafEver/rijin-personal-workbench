@@ -27,11 +27,14 @@
   const ui = {
     view: "today",
     period: "day",
+    activePlanDate: todayKey(),
     selectedDate: todayKey(),
     calendarDate: startOfMonth(new Date()),
     editingHabitId: null,
     selectedEmoji: "📖",
     selectedColor: COLORS[0],
+    quickTaskType: "bonus",
+    quickTaskDate: todayKey(),
     modalQuickCategory: "其他",
   };
 
@@ -121,6 +124,7 @@
           emoji: "📖",
           category: "成长",
           color: "#61715f",
+          taskType: "baseline",
           createdAt: created,
           archivedAt: null,
         },
@@ -130,6 +134,7 @@
           emoji: "🏃",
           category: "健康",
           color: "#d86e59",
+          taskType: "baseline",
           createdAt: created,
           archivedAt: null,
         },
@@ -139,6 +144,7 @@
           emoji: "✍️",
           category: "成长",
           color: "#c69a42",
+          taskType: "bonus",
           createdAt: created,
           archivedAt: null,
         },
@@ -176,6 +182,7 @@
           emoji: habit.emoji || "✦",
           category: CATEGORY_COLORS[habit.category] ? habit.category : "其他",
           color: /^#[0-9a-f]{6}$/i.test(habit.color || "") ? habit.color : COLORS[index % COLORS.length],
+          taskType: ["baseline", "bonus", "weekly"].includes(habit.taskType) ? habit.taskType : "baseline",
           createdAt: habit.createdAt || todayKey(),
           archivedAt: habit.archivedAt || null,
         })),
@@ -193,11 +200,13 @@
                 id: String(task.id),
                 title: String(task.title).slice(0, 80),
                 category: CATEGORY_COLORS[task.category] ? task.category : "其他",
+                taskType: ["baseline", "bonus", "weekly"].includes(task.taskType) ? task.taskType : "bonus",
                 createdAt: task.createdAt || new Date().toISOString(),
                 completedAt: task.completedAt || null,
               }))
           : [],
         note: typeof day.note === "string" ? day.note.slice(0, 500) : "",
+        logs: day.logs && typeof day.logs === "object" ? day.logs : {},
       };
     });
 
@@ -221,8 +230,9 @@
 
   function ensureDay(key = todayKey()) {
     if (!state.days[key]) {
-      state.days[key] = { habits: {}, extras: [], note: "" };
+      state.days[key] = { habits: {}, extras: [], note: "", logs: {} };
     }
+    if (!state.days[key].logs) state.days[key].logs = {};
     return state.days[key];
   }
 
@@ -280,13 +290,18 @@
     return keys.reduce(
       (total, key) => {
         const stats = getDayStats(key);
+        const day = state.days[key];
+        const logs = Object.values(day?.logs || {});
         total.planned += stats.planned;
         total.completed += stats.completed;
         total.activeDays += stats.completed > 0 ? 1 : 0;
+        total.minutes += logs.reduce((sum, log) => sum + (Number(log.actualMinutes) || 0), 0);
+        total.quantity += logs.reduce((sum, log) => sum + (Number(log.quantity) || 0), 0);
+        total.blockers += logs.filter((log) => String(log.blocker || "").trim()).length;
         if (stats.planned > 0) total.trackedDays += 1;
         return total;
       },
-      { planned: 0, completed: 0, activeDays: 0, trackedDays: 0, rate: 0 }
+      { planned: 0, completed: 0, activeDays: 0, trackedDays: 0, rate: 0, minutes: 0, quantity: 0, blockers: 0 }
     );
   }
 
@@ -361,12 +376,16 @@
     }
   }
 
-  function taskTemplate({ task, completed, completedAt, type, deletable = true }) {
+  function taskTemplate({ task, completed, completedAt, type, log, deletable = true }) {
     const color = task.color || categoryColor(task.category);
     const typeMeta =
       type === "habit"
-        ? `<span class="task-emoji" aria-hidden="true">${escapeHtml(task.emoji)}</span>`
-        : `<span class="task-time">${completedAt ? `${formatTime(completedAt)} 完成` : "临时事项"}</span>`;
+        ? `<span class="task-origin">每日固定</span>`
+        : `<span class="task-origin">${completedAt ? `${formatTime(completedAt)} 完成` : "本次计划"}</span>`;
+    const detailBits = [];
+    if (Number(log?.actualMinutes) > 0) detailBits.push(`${Number(log.actualMinutes)} 分钟`);
+    if (Number(log?.quantity) > 0) detailBits.push(`${Number(log.quantity)} 题`);
+    if (log?.blocker) detailBits.push("有卡点");
     return `
       <article
         class="task-item ${completed ? "is-completed" : ""}"
@@ -382,37 +401,48 @@
           <div class="task-meta">
             <span class="task-category">${escapeHtml(task.category || "其他")}</span>
             ${typeMeta}
+            ${detailBits.length ? `<span class="task-detail-chip">${detailBits.join(" · ")}</span>` : ""}
           </div>
         </div>
-        ${
-          type === "habit"
-            ? `<span class="task-emoji" aria-hidden="true">${escapeHtml(task.emoji)}</span>`
-            : deletable
+        <div class="task-actions">
+          ${type === "habit" ? `<span class="task-emoji" aria-hidden="true">${escapeHtml(task.emoji)}</span>` : ""}
+          <button class="task-log-button ${log ? "has-log" : ""}" type="button" data-action="open-task-log" aria-label="记录用时、题量和卡点" title="记录用时、题量和卡点">
+            <svg viewBox="0 0 24 24"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8.5"/></svg>
+          </button>
+          ${
+            type === "extra" && deletable
               ? `<button class="task-delete" type="button" data-action="delete-extra" aria-label="删除事项">
                    <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
                  </button>`
               : ""
-        }
+          }
+        </div>
       </article>
     `;
   }
 
   function renderToday() {
-    const key = todayKey();
-    const day = state.days[key] || { habits: {}, extras: [], note: "" };
+    const key = ui.activePlanDate;
+    const activeDate = parseKey(key);
+    const isToday = key === todayKey();
+    const day = state.days[key] || { habits: {}, extras: [], note: "", logs: {} };
     const stats = getDayStats(key);
     const habits = habitsForDate(key);
     const extras = Array.isArray(day.extras) ? day.extras : [];
     const progress = stats.planned ? Math.round((stats.completed / stats.planned) * 100) : 0;
 
+    $("#greeting").textContent = isToday ? getGreeting() : "未来计划";
+    $("#today-heading").textContent = isToday ? "今天，把重要的事做好。" : `${formatMonthDay(activeDate)}，提前安排好。`;
+    $("#today-intro-copy").textContent = isToday
+      ? "不必追赶所有事情，只把眼前这几件一点点完成。"
+      : "先安排下来，真正到来时就能少一点仓促。";
+
     $("#today-progress-ring").style.setProperty("--progress", `${progress * 3.6}deg`);
     $("#today-progress-value").textContent = `${progress}%`;
-    $("#habit-total-badge").textContent = `${habits.length} 项`;
-    $("#extra-total-badge").textContent = `${extras.length} 项`;
 
     if (progress === 100 && stats.planned > 0) {
-      $("#today-progress-title").textContent = "今天的计划都完成了";
-      $("#today-progress-copy").textContent = "可以安心收尾，记得留下一句记录";
+      $("#today-progress-title").textContent = isToday ? "今天的计划都完成了" : "这一天的计划都完成了";
+      $("#today-progress-copy").textContent = isToday ? "可以安心收尾，记得留下一句记录" : "安排清晰，可以继续查看其他日期";
     } else if (progress >= 50) {
       $("#today-progress-title").textContent = "已经走过一半";
       $("#today-progress-copy").textContent = `已完成 ${stats.completed} 件，还有 ${Math.max(stats.planned - stats.completed, 0)} 件待完成`;
@@ -424,51 +454,59 @@
       $("#today-progress-copy").textContent = stats.planned ? `还有 ${stats.planned} 件待完成` : "暂无安排，也可以留一点时间给自己";
     }
 
-    const habitTaskList = $("#habit-task-list");
-    if (habits.length) {
-      habitTaskList.innerHTML = habits
-        .map((habit) =>
-          taskTemplate({
-            task: habit,
-            completed: Boolean(day.habits?.[habit.id]),
-            completedAt: day.habits?.[habit.id],
-            type: "habit",
-          })
-        )
-        .join("");
-    } else {
-      habitTaskList.innerHTML = `
-        <div class="empty-state">
-          <div>
-            <span class="empty-state-icon">✦</span>
-            <strong>还没有固定事项</strong>
-            <p>设置每天想做的小事，明天开始就不用再手动添加。</p>
-          </div>
-        </div>`;
-    }
+    $("#week-strip").innerHTML = Array.from({ length: 7 }, (_, offset) => {
+      const date = addDays(new Date(), offset);
+      const dateValue = dateKey(date);
+      const dateStats = getDayStats(dateValue);
+      return `
+        <button class="week-day ${dateValue === key ? "is-selected" : ""} ${offset === 0 ? "is-today" : ""}" type="button" data-plan-date="${dateValue}">
+          <span>${offset === 0 ? "今天" : `周${SHORT_WEEKDAYS[date.getDay()]}`}</span>
+          <strong>${date.getDate()}</strong>
+          <small>${dateStats.completed}/${dateStats.planned}</small>
+        </button>`;
+    }).join("");
 
-    const extraTaskList = $("#extra-task-list");
-    if (extras.length) {
-      extraTaskList.innerHTML = extras
-        .map((task) =>
-          taskTemplate({
-            task,
-            completed: Boolean(task.completedAt),
-            completedAt: task.completedAt,
-            type: "extra",
-          })
-        )
-        .join("");
-    } else {
-      extraTaskList.innerHTML = `
-        <div class="empty-state">
-          <div>
-            <span class="empty-state-icon">＋</span>
-            <strong>今天还没有临时事项</strong>
-            <p>有临时要做的事时，再加到这里就好。</p>
-          </div>
-        </div>`;
-    }
+    const lanes = {
+      baseline: { element: $("#baseline-task-list"), count: $("#baseline-lane-count"), items: [] },
+      bonus: { element: $("#bonus-task-list"), count: $("#bonus-lane-count"), items: [] },
+      weekly: { element: $("#weekly-task-list"), count: $("#weekly-lane-count"), items: [] },
+    };
+    habits.forEach((habit) => {
+      lanes[habit.taskType || "baseline"].items.push({
+        task: habit,
+        type: "habit",
+        completed: Boolean(day.habits?.[habit.id]),
+        completedAt: day.habits?.[habit.id],
+      });
+    });
+    extras.forEach((task) => {
+      const taskType = task.taskType || "bonus";
+      lanes[taskType].items.push({
+        task,
+        type: "extra",
+        completed: Boolean(task.completedAt),
+        completedAt: task.completedAt,
+      });
+    });
+
+    Object.values(lanes).forEach((lane) => {
+      const completed = lane.items.filter((item) => item.completed).length;
+      lane.count.textContent = `${completed} / ${lane.items.length}`;
+      lane.element.innerHTML = lane.items.length
+        ? lane.items
+            .map((item) =>
+              taskTemplate({
+                ...item,
+                log: day.logs?.[item.task.id],
+              })
+            )
+            .join("")
+        : `<div class="lane-empty">这里还很空，可以添加一件真正重要的事。</div>`;
+    });
+
+    $("#task-board-title").textContent = isToday ? "今天的任务" : `${formatMonthDay(activeDate)}的任务`;
+    $("#task-board-count").textContent = `${stats.completed} / ${stats.planned} 项`;
+    $("#quick-task-input").placeholder = isToday ? "快速写下今天要安排的一件事…" : `添加到 ${formatMonthDay(activeDate)}…`;
 
     const note = $("#daily-note");
     if (document.activeElement !== note) {
@@ -476,6 +514,8 @@
     }
     const noteLength = note.value.length;
     $("#note-count").textContent = `${noteLength} / 500`;
+    const reflectionHeading = $(".reflection-heading h3");
+    if (reflectionHeading) reflectionHeading.textContent = isToday ? "今天，想留下一点什么？" : "这一天，想提前留下什么？";
   }
 
   function renderReview() {
@@ -547,6 +587,9 @@
     $("#metric-rate").textContent = rate;
     $("#metric-active-days").textContent = stats.activeDays;
     $("#metric-streak").textContent = currentStreak();
+    $("#metric-minutes").textContent = stats.minutes;
+    $("#metric-quantity").textContent = stats.quantity;
+    $("#metric-blockers").textContent = stats.blockers;
 
     if (ui.period === "day") {
       const dayStats = getDayStats(ui.selectedDate);
@@ -642,6 +685,8 @@
             color: habit.color,
             completedAt,
             key,
+            log: day.logs?.[habit.id] || null,
+            taskType: habit.taskType || "baseline",
           });
         }
       });
@@ -655,6 +700,8 @@
             color: categoryColor(task.category),
             completedAt: task.completedAt,
             key,
+            log: day.logs?.[task.id] || null,
+            taskType: task.taskType || "bonus",
           });
         }
       });
@@ -690,12 +737,19 @@
       .map((event) => {
         const showDate = ui.period !== "day";
         const date = new Date(event.completedAt);
+        const detail = [
+          Number(event.log?.actualMinutes) ? `${event.log.actualMinutes} 分钟` : "",
+          Number(event.log?.quantity) ? `${event.log.quantity} 题` : "",
+          event.log?.blocker ? "有卡点" : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
         return `
           <div class="activity-item">
             <span class="activity-icon" style="--task-color-soft: color-mix(in srgb, ${escapeHtml(event.color)} 14%, white)">${escapeHtml(event.emoji)}</span>
             <div class="activity-main">
               <strong>${escapeHtml(event.title)}</strong>
-              <span>${escapeHtml(event.category)}${showDate ? ` · ${date.getMonth() + 1}月${date.getDate()}日` : ""}</span>
+              <span>${escapeHtml(event.category)}${showDate ? ` · ${date.getMonth() + 1}月${date.getDate()}日` : ""}${detail ? ` · ${escapeHtml(detail)}` : ""}</span>
             </div>
             <span class="activity-time">${formatTime(event.completedAt)}</span>
           </div>
@@ -761,7 +815,7 @@
             <span class="habit-card-icon" aria-hidden="true">${escapeHtml(habit.emoji)}</span>
             <div class="habit-card-main">
               <h3>${escapeHtml(habit.title)}</h3>
-              <p>每天自动出现 · 从 ${escapeHtml(habit.createdAt.replaceAll("-", "."))} 开始</p>
+              <p>${taskTypeLabel(habit.taskType)} · 每天自动出现 · 从 ${escapeHtml(habit.createdAt.replaceAll("-", "."))} 开始</p>
             </div>
             <span class="habit-category-tag">${escapeHtml(habit.category)}</span>
             <div class="habit-actions">
@@ -789,7 +843,7 @@
   }
 
   function toggleTask(type, id) {
-    const key = todayKey();
+    const key = ui.activePlanDate;
     const day = ensureDay(key);
     if (type === "habit") {
       day.habits[id] = day.habits[id] ? null : new Date().toISOString();
@@ -802,31 +856,33 @@
     renderAll();
   }
 
-  function addExtraTask(title, category = "其他") {
+  function addExtraTask(title, category = "其他", taskType = "bonus", key = ui.activePlanDate) {
     const cleanTitle = title.trim();
     if (!cleanTitle) return;
-    const day = ensureDay(todayKey());
+    const day = ensureDay(key);
     day.extras.push({
       id: uid("extra"),
       title: cleanTitle.slice(0, 80),
       category: CATEGORY_COLORS[category] ? category : "其他",
+      taskType: ["baseline", "bonus", "weekly"].includes(taskType) ? taskType : "bonus",
       createdAt: new Date().toISOString(),
       completedAt: null,
     });
     persist();
     renderAll();
-    showToast("已加入今天");
+    showToast(key === todayKey() ? "已加入今天" : `已加入 ${formatMonthDay(parseKey(key))}`);
   }
 
   function deleteExtraTask(id) {
-    const day = ensureDay(todayKey());
+    const key = ui.activePlanDate;
+    const day = ensureDay(key);
     const index = day.extras.findIndex((task) => task.id === id);
     if (index === -1) return;
     const deleted = day.extras[index];
     day.extras = day.extras.filter((task) => task.id !== id);
     persist();
     renderAll();
-    lastDeletedExtra = { task: deleted, index, date: todayKey() };
+    lastDeletedExtra = { task: deleted, index, date: key };
     showToast("已删除临时事项", "撤销", () => {
       if (!lastDeletedExtra) return;
       const targetDay = ensureDay(lastDeletedExtra.date);
@@ -850,6 +906,7 @@
     $("#habit-id").value = habit?.id || "";
     $("#habit-title").value = habit?.title || "";
     $("#habit-category").value = habit?.category || "成长";
+    $("#habit-task-type").value = habit?.taskType || "baseline";
     renderEmojiPicker();
     renderColorPicker();
     const dialog = $("#habit-modal");
@@ -884,6 +941,7 @@
       return;
     }
     const category = $("#habit-category").value;
+    const taskType = $("#habit-task-type").value;
     const existing = ui.editingHabitId
       ? state.habits.find((habit) => habit.id === ui.editingHabitId)
       : null;
@@ -892,6 +950,7 @@
       existing.category = category;
       existing.emoji = ui.selectedEmoji;
       existing.color = ui.selectedColor;
+      existing.taskType = taskType;
       showToast("固定事项已更新");
     } else {
       state.habits.push({
@@ -900,6 +959,7 @@
         category,
         emoji: ui.selectedEmoji,
         color: ui.selectedColor,
+        taskType,
         createdAt: todayKey(),
         archivedAt: null,
       });
@@ -925,12 +985,62 @@
     );
   }
 
-  function openQuickModal() {
+  function openQuickModal(presetType = null, key = ui.activePlanDate) {
+    ui.quickTaskType = ["baseline", "bonus", "weekly"].includes(presetType)
+      ? presetType
+      : $("#quick-task-type-inline").value || "bonus";
+    ui.quickTaskDate = key;
     $("#quick-modal-input").value = "";
     $("#quick-modal-category").value = "其他";
+    $("#quick-modal-type").value = ui.quickTaskType;
+    $(".quick-modal .eyebrow").textContent =
+      key === todayKey() ? "安排今天" : `安排 ${formatMonthDay(parseKey(key))}`;
     const dialog = $("#quick-modal");
     dialog.showModal();
     window.setTimeout(() => $("#quick-modal-input").focus(), 50);
+  }
+
+  function taskTypeLabel(taskType) {
+    return { baseline: "底线", bonus: "加分", weekly: "周任务" }[taskType] || "底线";
+  }
+
+  function findTask(type, id, key = ui.activePlanDate) {
+    if (type === "habit") return state.habits.find((habit) => habit.id === id) || null;
+    const day = state.days[key];
+    return day?.extras?.find((task) => task.id === id) || null;
+  }
+
+  function openTaskLogModal(type, id, key = ui.activePlanDate) {
+    const task = findTask(type, id, key);
+    if (!task) return;
+    const log = state.days[key]?.logs?.[id] || {};
+    $("#task-log-day").value = key;
+    $("#task-log-type").value = type;
+    $("#task-log-id").value = id;
+    $("#task-log-title").textContent = task.title;
+    $("#task-log-minutes").value = log.actualMinutes || "";
+    $("#task-log-quantity").value = log.quantity || "";
+    $("#task-log-blocker").value = log.blocker || "";
+    $("#task-log-modal").showModal();
+    window.setTimeout(() => $("#task-log-minutes").focus(), 50);
+  }
+
+  function saveTaskLog() {
+    const key = $("#task-log-day").value;
+    const id = $("#task-log-id").value;
+    if (!key || !id) return;
+    const day = ensureDay(key);
+    const log = {
+      actualMinutes: Math.max(0, Number($("#task-log-minutes").value) || 0),
+      quantity: Math.max(0, Number($("#task-log-quantity").value) || 0),
+      blocker: $("#task-log-blocker").value.trim().slice(0, 300),
+      updatedAt: new Date().toISOString(),
+    };
+    if (!log.actualMinutes && !log.quantity && !log.blocker) delete day.logs[id];
+    else day.logs[id] = log;
+    persist();
+    renderAll();
+    showToast(log.actualMinutes || log.quantity || log.blocker ? "执行记录已保存" : "执行记录已清空");
   }
 
   function openConfirm(title, copy, okLabel, action) {
@@ -1558,6 +1668,8 @@
           toggleTask(item.dataset.taskType, item.dataset.taskId);
         } else if (action === "delete-extra" && item) {
           deleteExtraTask(item.dataset.taskId);
+        } else if (action === "open-task-log" && item) {
+          openTaskLogModal(item.dataset.taskType, item.dataset.taskId);
         } else if (action === "edit-habit") {
           openHabitModal(taskButton.dataset.id);
         } else if (action === "delete-habit") {
@@ -1587,6 +1699,14 @@
         return;
       }
 
+      const planDayButton = event.target.closest("[data-plan-date]");
+      if (planDayButton) {
+        ui.activePlanDate = planDayButton.dataset.planDate;
+        renderToday();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
       const dayButton = event.target.closest("[data-date]");
       if (dayButton) {
         ui.selectedDate = dayButton.dataset.date;
@@ -1600,6 +1720,11 @@
         }
         renderReview();
         return;
+      }
+
+      const addTypeButton = event.target.closest("[data-add-type]");
+      if (addTypeButton) {
+        openQuickModal(addTypeButton.dataset.addType, ui.activePlanDate);
       }
     });
 
@@ -1617,7 +1742,8 @@
     $("#quick-task-form").addEventListener("submit", (event) => {
       event.preventDefault();
       const input = $("#quick-task-input");
-      addExtraTask(input.value);
+      const taskType = $("#quick-task-type-inline").value;
+      addExtraTask(input.value, "其他", taskType, ui.activePlanDate);
       input.value = "";
       input.focus();
     });
@@ -1639,7 +1765,7 @@
         input.focus();
         return;
       }
-      addExtraTask(input.value, $("#quick-modal-category").value);
+      addExtraTask(input.value, $("#quick-modal-category").value, $("#quick-modal-type").value, ui.quickTaskDate);
       $("#quick-modal").close();
     });
 
@@ -1649,6 +1775,12 @@
       if (!$("#habit-title").reportValidity()) return;
       saveHabit();
       $("#habit-modal").close();
+    });
+
+    $("#save-task-log").addEventListener("click", (event) => {
+      event.preventDefault();
+      saveTaskLog();
+      $("#task-log-modal").close();
     });
 
     $("#habit-form").addEventListener("keydown", (event) => {
@@ -1661,7 +1793,7 @@
     });
 
     $("#daily-note").addEventListener("input", (event) => {
-      const day = ensureDay(todayKey());
+      const day = ensureDay(ui.activePlanDate);
       day.note = event.target.value.slice(0, 500);
       $("#note-count").textContent = `${day.note.length} / 500`;
       $("#note-status").textContent = "正在输入…";
@@ -1731,6 +1863,7 @@
           localStorage.removeItem(STORAGE_KEY);
           state = createSeedState();
           persist();
+          ui.activePlanDate = todayKey();
           ui.selectedDate = todayKey();
           ui.calendarDate = startOfMonth(new Date());
           renderAll();
