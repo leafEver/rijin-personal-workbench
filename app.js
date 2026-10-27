@@ -194,6 +194,7 @@
           taskType: ["baseline", "bonus", "weekly"].includes(habit.taskType) ? habit.taskType : "baseline",
           startTime: /^\d{2}:\d{2}$/.test(habit.startTime || "") ? habit.startTime : "",
           endTime: /^\d{2}:\d{2}$/.test(habit.endTime || "") ? habit.endTime : "",
+          periodLabel: normalizePeriodLabel(habit.periodLabel || ""),
           weekday:
             Number.isInteger(habit.weekday) && habit.weekday >= 0 && habit.weekday <= 6
               ? habit.weekday
@@ -218,6 +219,7 @@
                 taskType: ["baseline", "bonus", "weekly"].includes(task.taskType) ? task.taskType : "bonus",
                 startTime: /^\d{2}:\d{2}$/.test(task.startTime || "") ? task.startTime : "",
                 endTime: /^\d{2}:\d{2}$/.test(task.endTime || "") ? task.endTime : "",
+                periodLabel: normalizePeriodLabel(task.periodLabel || ""),
                 createdAt: task.createdAt || new Date().toISOString(),
                 completedAt: task.completedAt || null,
               }))
@@ -409,9 +411,9 @@
     if (Number(log?.actualMinutes) > 0) detailBits.push(`${Number(log.actualMinutes)} 分钟`);
     if (Number(log?.quantity) > 0) detailBits.push(`${Number(log.quantity)} 题`);
     if (log?.blocker) detailBits.push("有卡点");
-    const scheduleLabel = task.startTime
-      ? `${task.startTime}${task.endTime ? `–${task.endTime}` : ""}`
-      : "";
+    const scheduleLabel =
+      task.periodLabel ||
+      (task.startTime ? `${task.startTime}${task.endTime ? `–${task.endTime}` : ""}` : "");
     return `
       <article
         class="task-item ${completed ? "is-completed" : ""}"
@@ -541,7 +543,13 @@
             return `
               <button class="weekly-preview-item ${item.completed ? "is-completed" : ""}" type="button" data-open-week-view>
                 <span class="weekly-preview-day">${dayLabel}</span>
-                <span class="weekly-preview-title">${item.task.startTime ? `${escapeHtml(item.task.startTime)} · ` : ""}${escapeHtml(item.task.title)}</span>
+                <span class="weekly-preview-title">${
+                  item.task.periodLabel
+                    ? `${escapeHtml(item.task.periodLabel)} · `
+                    : item.task.startTime
+                      ? `${escapeHtml(item.task.startTime)} · `
+                      : ""
+                }${escapeHtml(item.task.title)}</span>
                 <i>${item.completed ? "✓" : "→"}</i>
               </button>`;
           })
@@ -596,7 +604,7 @@
         style="--schedule-color: ${escapeHtml(item.task.color || categoryColor(item.task.category))}"
         title="${escapeHtml(item.task.title)}"
       >
-        <span>${item.task.startTime ? escapeHtml(item.task.startTime) : "未排"}</span>
+        <span>${escapeHtml(item.task.periodLabel || item.task.startTime || "未排")}</span>
         <strong>${escapeHtml(item.task.title)}</strong>
       </button>`;
     const timetableHeader = weekDates.map((date) => {
@@ -607,23 +615,46 @@
         <span>${date.getMonth() + 1}/${date.getDate()} · ${dateStats.completed}/${dateStats.planned}</span>
       </div>`;
     }).join("");
-    const timetableRows = timeSlots.map((slot, index) => {
+    const renderTimetableRow = (label, matches) => {
       const cells = weekKeys.map((dateValue) => {
-        const items = scheduleItems.filter(
-          (item) => item.key === dateValue && slotIndex(item.task.startTime) === index
-        );
+        const items = scheduleItems.filter((item) => item.key === dateValue && matches(item));
         return `<div class="timetable-cell">${items.map(scheduleChip).join("")}</div>`;
       }).join("");
-      return `<div class="timetable-time">${slot}</div>${cells}`;
-    }).join("");
+      return `<div class="timetable-time">${escapeHtml(label)}</div>${cells}`;
+    };
+    const periodLabels = [
+      ...new Set(scheduleItems.map((item) => item.task.periodLabel).filter(Boolean)),
+    ].sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true }));
+    const timetableRows = periodLabels.length
+      ? [
+          ...periodLabels.map((label) =>
+            renderTimetableRow(label, (item) => item.task.periodLabel === label)
+          ),
+          ...(scheduleItems.some((item) => item.task.startTime && !item.task.periodLabel)
+            ? [
+                renderTimetableRow(
+                  "其他时间",
+                  (item) => Boolean(item.task.startTime && !item.task.periodLabel)
+                ),
+              ]
+            : []),
+        ].join("")
+      : timeSlots
+          .map((slot, index) =>
+            renderTimetableRow(
+              slot,
+              (item) => !item.task.periodLabel && slotIndex(item.task.startTime) === index
+            )
+          )
+          .join("");
     const unscheduledCells = weekKeys.map((dateValue) => {
       const items = scheduleItems.filter(
-        (item) => item.key === dateValue && !item.task.startTime
+        (item) => item.key === dateValue && !item.task.startTime && !item.task.periodLabel
       );
       return `<div class="timetable-cell">${items.map(scheduleChip).join("")}</div>`;
     }).join("");
     $("#week-timetable").innerHTML = `
-      <div class="timetable-corner">时间</div>
+      <div class="timetable-corner">节次/时间</div>
       ${timetableHeader}
       ${timetableRows}
       <div class="timetable-time timetable-unscheduled">未排时间</div>
@@ -1257,6 +1288,23 @@
     return `${pad(hours)}:${pad(minutes)}`;
   }
 
+  function normalizePeriodLabel(value) {
+    const text = String(value || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .replace(/[~～—–至到]/g, "-");
+    if (!text) return "";
+    const match = text.match(/(?:第)?(\d{1,2})(?:[-、,，](\d{1,2}))?(?:节|课)?/);
+    if (match) {
+      const start = Number(match[1]);
+      const end = Number(match[2] || "");
+      if (start < 1 || start > 20) return "";
+      if (end && (end < start || end > 20)) return "";
+      return `第${start}${end ? `–${end}` : ""}节`;
+    }
+    return text.length <= 8 && /节|课/.test(text) ? text : "";
+  }
+
   function resolveImportDate(dateValue = "", weekdayValue = "") {
     const dateText = String(dateValue).trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
@@ -1322,6 +1370,7 @@
       weekday: ["周几", "星期", "星期几", "weekday", "dayofweek"],
       start: ["开始", "开始时间", "start", "starttime"],
       end: ["结束", "结束时间", "end", "endtime"],
+      period: ["节次", "第几节", "节数", "period", "section"],
       title: ["事项", "任务", "课程", "课程名", "task", "title", "subject"],
       category: ["分类", "类别", "category", "type"],
     };
@@ -1341,6 +1390,7 @@
       let date = "";
       let startTime = "";
       let endTime = "";
+      let periodLabel = "";
       let title = "";
       let category = "学习";
 
@@ -1351,32 +1401,47 @@
         );
         startTime = normalizeImportTime(headerMap.start !== undefined ? cells[headerMap.start] : "");
         endTime = normalizeImportTime(headerMap.end !== undefined ? cells[headerMap.end] : "");
+        periodLabel = normalizePeriodLabel(headerMap.period !== undefined ? cells[headerMap.period] : "");
         title = headerMap.title !== undefined ? String(cells[headerMap.title] || "").trim() : "";
         category = headerMap.category !== undefined ? String(cells[headerMap.category] || "").trim() : "学习";
       } else {
         const directMatch = line.match(
           /^(周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}[月/.\-]\d{1,2}日?|\d{4}-\d{2}-\d{2})\s+(\d{1,2}[:：点]\d{1,2})\s*[-–—~至]\s*(\d{1,2}[:：点]\d{1,2})\s+(.+)$/
         );
+        const periodMatch = line.match(
+          /^(周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}[月/.\-]\d{1,2}日?|\d{4}-\d{2}-\d{2})\s+(第?\s*\d{1,2}(?:\s*[-–—~至、]\s*\d{1,2})?\s*节?)\s+(.+)$/
+        );
         if (directMatch) {
           date = resolveImportDate(directMatch[1]);
           startTime = normalizeImportTime(directMatch[2]);
           endTime = normalizeImportTime(directMatch[3]);
           title = directMatch[4].trim();
+        } else if (periodMatch) {
+          date = resolveImportDate(periodMatch[1]);
+          periodLabel = normalizePeriodLabel(periodMatch[2]);
+          title = periodMatch[3].trim();
+        } else if (cells.length >= 3 && normalizePeriodLabel(cells[1])) {
+          date = resolveImportDate(cells[0], cells[0]);
+          periodLabel = normalizePeriodLabel(cells[1]);
+          title = String(cells[2] || "").trim();
+          category = String(cells[3] || "学习").trim();
         } else if (cells.length >= 4) {
           date = resolveImportDate(cells[0], cells[0]);
           startTime = normalizeImportTime(cells[1]);
           endTime = normalizeImportTime(cells[2]);
           title = String(cells[3] || "").trim();
           category = String(cells[4] || "学习").trim();
+          periodLabel = normalizePeriodLabel(cells[5] || "");
         }
       }
 
-      if (!date || !startTime || !title) return;
+      if (!date || (!startTime && !periodLabel) || !title) return;
       rows.push({
         date,
         title: title.slice(0, 80),
         startTime,
         endTime,
+        periodLabel,
         category: CATEGORY_COLORS[category] ? category : "学习",
       });
     });
@@ -1407,7 +1472,8 @@
           habit.weekday === weekday &&
           habit.title === row.title.slice(0, 30) &&
           habit.startTime === row.startTime &&
-          (habit.endTime || "") === (row.endTime || "")
+          (habit.endTime || "") === (row.endTime || "") &&
+          (habit.periodLabel || "") === (row.periodLabel || "")
       );
       if (duplicate) {
         skipped += 1;
@@ -1421,6 +1487,7 @@
         weekday,
         startTime: row.startTime,
         endTime: row.endTime,
+        periodLabel: row.periodLabel || "",
         emoji: "📚",
         color: categoryColor(row.category),
         createdAt: dateKey(startOfWeekMonday(new Date())),
@@ -1789,6 +1856,26 @@
     return grouped.map(({ lastY, ...row }) => row);
   }
 
+  function findOcrPeriodRows(lines, dayColumns, width, height) {
+    const gutterLimit = dayColumns[0].x - Math.max(12, width * 0.015);
+    const headerBottom = Math.min(...dayColumns.map((column) => column.y)) + height * 0.04;
+    const rows = [];
+    lines.forEach((line) => {
+      if (line.y < headerBottom) return;
+      const gutterWords = line.words.filter(
+        (word) => (word.bbox.x0 + word.bbox.x1) / 2 < gutterLimit
+      );
+      if (!gutterWords.length) return;
+      const label = normalizePeriodLabel(gutterWords.map((word) => word.text).join(""));
+      if (!label || gutterWords.map((word) => word.text).join("").length > 8) return;
+      const duplicate = rows.some(
+        (row) => row.label === label && Math.abs(row.y - line.y) < height * 0.025
+      );
+      if (!duplicate) rows.push({ y: line.y, label });
+    });
+    return rows.sort((a, b) => a.y - b.y);
+  }
+
   function inferScheduleCategory(title) {
     if (/(体育|跑步|健身|游泳|瑜伽|锻炼)/.test(title)) return "健康";
     if (/(会议|项目|工作|实习|值班)/.test(title)) return "工作";
@@ -1816,7 +1903,13 @@
     if (inferredWeekdays) dayColumns = inferOcrDayColumns(lines, width, height);
     if (dayColumns.length < 3) return { rows: [], reason: "没有定位到课表列" };
     const timeRows = findOcrTimeRows(lines, dayColumns, width, height);
-    if (timeRows.length < 2) return { rows: [], reason: "没有定位到左侧时间" };
+    const usesPeriods = timeRows.length < 2;
+    const scheduleRows = usesPeriods
+      ? findOcrPeriodRows(lines, dayColumns, width, height)
+      : timeRows;
+    if (scheduleRows.length < 2) {
+      return { rows: [], reason: "没有定位到左侧时间或节次" };
+    }
 
     const headerBottom = Math.min(...dayColumns.map((column) => column.y)) + height * 0.04;
     const columnBounds = dayColumns.map((column, index) => {
@@ -1828,9 +1921,9 @@
         right: next ? (column.x + next.x) / 2 : column.x + (column.x - previous.x) / 2,
       };
     });
-    const rowBounds = timeRows.map((row, index) => {
-      const previous = timeRows[index - 1];
-      const next = timeRows[index + 1];
+    const rowBounds = scheduleRows.map((row, index) => {
+      const previous = scheduleRows[index - 1];
+      const next = scheduleRows[index + 1];
       return {
         ...row,
         top: previous ? (previous.y + row.y) / 2 : headerBottom,
@@ -1881,15 +1974,19 @@
         const title = cleanOcrCourseTitle(rawTitle).slice(0, 80);
         if (!title || title.length < 2 || /^[\d\s\-—]+$/.test(title) || /^(时间|课程表|课表|节次)$/.test(title)) return;
         const column = dayColumns[bucket.columnIndex];
-        const time = timeRows[bucket.rowIndex];
+        const scheduleRow = scheduleRows[bucket.rowIndex];
         const inlineTimes = ocrTimesFromText(rawTitle);
-        const startTime = inlineTimes[0] || time.start;
-        const endTime = inlineTimes[1] || time.end;
+        const inlinePeriod = /第?\s*\d{1,2}(?:\s*[-–—~至、]\s*\d{1,2})?\s*节/.test(rawTitle)
+          ? normalizePeriodLabel(rawTitle)
+          : "";
+        const startTime = usesPeriods ? "" : inlineTimes[0] || scheduleRow.start;
+        const endTime = usesPeriods ? "" : inlineTimes[1] || scheduleRow.end;
         rows.push({
           date: resolveImportDate("", SHORT_WEEKDAYS[column.day === 6 ? 0 : column.day + 1]),
           title,
           startTime,
           endTime,
+          periodLabel: usesPeriods ? scheduleRow.label : inlinePeriod,
           category: inferScheduleCategory(title),
         });
       });
@@ -1898,6 +1995,7 @@
     return {
       rows,
       inferredWeekdays,
+      usesPeriods,
       reason: rows.length ? "" : "没有从时间格中读到课程名称",
     };
   }
@@ -1905,10 +2003,15 @@
   function timetableRowsToImportText(rows) {
     return rows
       .slice()
-      .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+      .sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) ||
+          (a.periodLabel || "").localeCompare(b.periodLabel || "", "zh-CN", { numeric: true }) ||
+          a.startTime.localeCompare(b.startTime)
+      )
       .map((row) => {
         const weekday = new Date(`${row.date}T00:00:00`).getDay();
-        return `${WEEKDAYS[weekday]},${row.startTime},${row.endTime},${row.title},${row.category}`;
+        return `${WEEKDAYS[weekday]},${row.startTime},${row.endTime},${row.title},${row.category},${row.periodLabel || ""}`;
       })
       .join("\n");
   }
@@ -2027,11 +2130,13 @@
       if (fallbackRows.length) {
         textarea.value = timetableRowsToImportText(fallbackRows);
         updateTimetableImportButton();
+        const layoutHints = [
+          gridResult.inferredWeekdays ? "；已按从左到右排列周一至周日，请核对" : "",
+          gridResult.usesPeriods ? "；已按左侧节次排列" : "",
+        ].join("");
         setOcrProgress(
           1,
-          `识别完成，找到 ${fallbackRows.length} 项安排${
-            gridResult.inferredWeekdays ? "；已按从左到右排列周一至周日，请核对" : ""
-          }`,
+          `识别完成，找到 ${fallbackRows.length} 项安排${layoutHints}`,
           "success"
         );
       } else {
