@@ -1668,6 +1668,66 @@
     return [];
   }
 
+  function inferOcrDayColumns(lines, width, height) {
+    const headerLine = lines
+      .filter((line) => line.y < height * 0.45 && line.words.length >= 3)
+      .map((line) => ({
+        line,
+        spread: line.bbox.x1 - line.bbox.x0,
+        clusters: (() => {
+          const words = line.words
+            .filter((word) => !/(时间|节次|课程表|time|period)/i.test(word.text))
+            .slice()
+            .sort((a, b) => a.bbox.x0 - b.bbox.x0);
+          const clusters = [];
+          words.forEach((word) => {
+            const item = {
+              x0: word.bbox.x0,
+              x1: word.bbox.x1,
+              items: 1,
+              text: word.text,
+            };
+            const previous = clusters[clusters.length - 1];
+            const wordWidth = Math.max(1, word.bbox.x1 - word.bbox.x0);
+            if (previous && word.bbox.x0 - previous.x1 < Math.max(width * 0.012, wordWidth * 0.9)) {
+              previous.x1 = Math.max(previous.x1, word.bbox.x1);
+              previous.items += 1;
+              previous.text += word.text;
+            } else {
+              clusters.push(item);
+            }
+          });
+          return clusters;
+        })(),
+      }))
+      .filter((candidate) => candidate.spread > width * 0.45)
+      .sort((a, b) => b.clusters.length - a.clusters.length || a.line.y - b.line.y)[0];
+
+    if (!headerLine) return [];
+    let columns = headerLine.clusters
+      .filter((cluster) => cluster.x1 - cluster.x0 < width * 0.2)
+      .map((cluster) => ({ x: (cluster.x0 + cluster.x1) / 2 }));
+    if (columns.length > 7) columns = columns.slice(-7);
+    if (columns.length === 7) {
+      return columns.map((column) => ({ ...column, inferred: true }));
+    }
+
+    const timeWords = lines
+      .filter((line) => ocrTimesFromText(line.words.map((word) => word.text).join("")).length)
+      .flatMap((line) => line.words)
+      .filter((word) => (word.bbox.x0 + word.bbox.x1) / 2 < width * 0.24);
+    const gutterRight = timeWords.length
+      ? Math.max(...timeWords.map((word) => word.bbox.x1))
+      : headerLine.line.bbox.x0 + (headerLine.line.bbox.x1 - headerLine.line.bbox.x0) / 8;
+    const tableRight = Math.max(headerLine.line.bbox.x1, width * 0.94);
+    const dayLeft = Math.min(gutterRight + width * 0.012, tableRight - width * 0.35);
+    const dayWidth = (tableRight - dayLeft) / 7;
+    return Array.from({ length: 7 }, (_, index) => ({
+      x: dayLeft + dayWidth * (index + 0.5),
+      inferred: true,
+    }));
+  }
+
   function ocrTimesFromText(value) {
     const text = String(value || "")
       .replace(/[Oo]/g, "0")
@@ -1751,8 +1811,10 @@
 
   function timetableRowsFromOcr(data, width, height) {
     const lines = collectOcrLines(data);
-    const dayColumns = findOcrDayColumns(lines, width, height);
-    if (dayColumns.length < 3) return { rows: [], reason: "没有定位到星期表头" };
+    let dayColumns = findOcrDayColumns(lines, width, height);
+    const inferredWeekdays = dayColumns.length < 3;
+    if (inferredWeekdays) dayColumns = inferOcrDayColumns(lines, width, height);
+    if (dayColumns.length < 3) return { rows: [], reason: "没有定位到课表列" };
     const timeRows = findOcrTimeRows(lines, dayColumns, width, height);
     if (timeRows.length < 2) return { rows: [], reason: "没有定位到左侧时间" };
 
@@ -1833,7 +1895,11 @@
       });
     });
 
-    return { rows, reason: rows.length ? "" : "没有从时间格中读到课程名称" };
+    return {
+      rows,
+      inferredWeekdays,
+      reason: rows.length ? "" : "没有从时间格中读到课程名称",
+    };
   }
 
   function timetableRowsToImportText(rows) {
@@ -1961,7 +2027,13 @@
       if (fallbackRows.length) {
         textarea.value = timetableRowsToImportText(fallbackRows);
         updateTimetableImportButton();
-        setOcrProgress(1, `识别完成，找到 ${fallbackRows.length} 项安排`, "success");
+        setOcrProgress(
+          1,
+          `识别完成，找到 ${fallbackRows.length} 项安排${
+            gridResult.inferredWeekdays ? "；已按从左到右排列周一至周日，请核对" : ""
+          }`,
+          "success"
+        );
       } else {
         textarea.value = String(result.data?.text || "").trim();
         updateTimetableImportButton();
