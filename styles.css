@@ -1128,6 +1128,8 @@ svg {
 .week-plan-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 14px;
 }
 
@@ -1458,9 +1460,15 @@ svg {
 }
 
 .task-origin,
-.task-detail-chip {
+.task-detail-chip,
+.task-schedule {
   color: var(--ink-faint);
   font-size: 9px;
+}
+
+.task-schedule {
+  color: #70818d;
+  font-weight: 600;
 }
 
 .task-detail-chip {
@@ -1563,8 +1571,139 @@ svg {
   line-height: 1.65;
 }
 
+.schedule-import-modal {
+  width: min(590px, calc(100% - 32px));
+}
+
+.schedule-import-copy {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.schedule-file-button {
+  position: relative;
+  display: inline-flex;
+  overflow: hidden;
+}
+
+.schedule-import-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.schedule-file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ocr-preview {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 15px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface-warm);
+}
+
+.ocr-preview[hidden] {
+  display: none;
+}
+
+.ocr-preview img {
+  width: 118px;
+  height: 82px;
+  object-fit: cover;
+  border-radius: 9px;
+  background: var(--paper-deep);
+}
+
+.ocr-preview strong {
+  display: block;
+  font-size: 11px;
+}
+
+.ocr-preview strong[data-state="success"] {
+  color: var(--sage);
+}
+
+.ocr-preview strong[data-state="warning"] {
+  color: #9b7131;
+}
+
+.ocr-preview strong[data-state="error"] {
+  color: var(--coral);
+}
+
+.ocr-preview p {
+  margin: 7px 0 0;
+  color: var(--ink-faint);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.ocr-progress {
+  height: 5px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--paper-deep);
+}
+
+.ocr-progress i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--sage), #8da382);
+  transition: width 250ms ease;
+}
+
+.schedule-import-textarea {
+  height: 170px;
+  padding: 12px 14px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.schedule-import-help {
+  margin-top: 15px;
+  padding: 13px 15px;
+  border-radius: 12px;
+  color: var(--ink-faint);
+  background: var(--surface-warm);
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.schedule-import-help strong {
+  color: var(--ink-soft);
+}
+
+.schedule-import-help p {
+  margin: 5px 0 0;
+}
+
+.schedule-import-help code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--sage-deep);
+  background: var(--sage-soft);
+  font-size: 10px;
+}
+
 .week-overview-modal {
-  width: min(760px, calc(100% - 32px));
+  width: min(1060px, calc(100% - 32px));
 }
 
 .week-overview-card {
@@ -1603,6 +1742,14 @@ svg {
   font-weight: 500;
 }
 
+.week-swipe-hint {
+  display: none;
+  margin: 12px 0 0;
+  color: var(--ink-faint);
+  font-size: 10px;
+  text-align: center;
+}
+
 .week-modal-chart {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -1611,6 +1758,160 @@ svg {
   margin-top: 22px;
   padding: 12px 4px 5px;
   border-bottom: 1px solid var(--line);
+}
+
+.weekly-timetable-wrap {
+  margin-top: 22px;
+  overflow-x: auto;
+  padding-bottom: 5px;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.weekly-timetable {
+  display: grid;
+  min-width: 850px;
+  grid-template-columns: 68px repeat(7, minmax(105px, 1fr));
+  grid-auto-rows: minmax(69px, auto);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface);
+}
+
+.timetable-corner,
+.timetable-day,
+.timetable-time,
+.timetable-cell {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.timetable-corner,
+.timetable-time {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.timetable-corner {
+  z-index: 3;
+}
+
+.timetable-corner,
+.timetable-day {
+  min-height: 56px;
+  padding: 12px 8px;
+  background: #efeee7;
+}
+
+.timetable-corner {
+  display: grid;
+  place-items: center;
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.timetable-day {
+  text-align: center;
+}
+
+.timetable-day strong {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.timetable-day span {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-faint);
+  font-size: 8px;
+}
+
+.timetable-day.is-today {
+  color: white;
+  background: var(--sage);
+}
+
+.timetable-day.is-today strong,
+.timetable-day.is-today span {
+  color: white;
+}
+
+.timetable-day:nth-child(8),
+.timetable-cell:nth-child(8n),
+.timetable-time:nth-child(8n) {
+  border-right: 0;
+}
+
+.timetable-time {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 13px 5px;
+  color: var(--ink-faint);
+  background: #faf9f5;
+  font-family: var(--font-serif);
+  font-size: 10px;
+}
+
+.timetable-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  background: rgba(255, 254, 250, 0.7);
+}
+
+.timetable-unscheduled {
+  align-items: center;
+  padding-inline: 3px;
+  text-align: center;
+}
+
+.schedule-task {
+  display: block;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-left: 3px solid var(--schedule-color, var(--sage));
+  border-radius: 7px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--schedule-color, var(--sage)) 10%, white);
+  cursor: pointer;
+  text-align: left;
+}
+
+.schedule-task:hover {
+  filter: brightness(0.98);
+  transform: translateY(-1px);
+}
+
+.schedule-task > span {
+  display: block;
+  color: var(--schedule-color, var(--sage));
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.schedule-task > strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.schedule-task.is-completed {
+  opacity: 0.63;
+}
+
+.schedule-task.is-completed > strong {
+  text-decoration: line-through;
 }
 
 .week-modal-column {
@@ -3900,7 +4201,7 @@ select:focus-visible {
     inset: auto 12px calc(10px + env(safe-area-inset-bottom));
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     padding: 6px;
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 18px;
@@ -4079,7 +4380,7 @@ select:focus-visible {
 
   .week-plan-actions {
     margin-top: 12px;
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 
   .week-plan-actions .text-button {
@@ -4123,6 +4424,28 @@ select:focus-visible {
 
   .week-overview-card {
     padding: 22px 17px;
+  }
+
+  .week-swipe-hint {
+    display: block;
+  }
+
+  .weekly-timetable-wrap {
+    margin-top: 12px;
+  }
+
+  .schedule-task > strong {
+    font-size: 11px;
+  }
+
+  .ocr-preview {
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 11px;
+  }
+
+  .ocr-preview img {
+    width: 82px;
+    height: 70px;
   }
 
   .week-modal-chart {

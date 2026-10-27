@@ -18,6 +18,7 @@
     成长: "#61715f",
     健康: "#d86e59",
     工作: "#718390",
+    学习: "#667f8a",
     生活: "#c69a42",
     关系: "#8b7f9c",
     其他: "#9a927f",
@@ -49,6 +50,9 @@
   let syncInFlight = false;
   let applyingRemote = false;
   let lastSyncedAt = null;
+  let ocrWorker = null;
+  let ocrPreviewUrl = null;
+  let ocrRunToken = 0;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -124,6 +128,8 @@
           category: "成长",
           color: "#61715f",
           taskType: "baseline",
+          startTime: "21:00",
+          endTime: "21:20",
           createdAt: created,
           archivedAt: null,
         },
@@ -134,6 +140,8 @@
           category: "健康",
           color: "#d86e59",
           taskType: "baseline",
+          startTime: "19:30",
+          endTime: "20:00",
           createdAt: created,
           archivedAt: null,
         },
@@ -144,6 +152,8 @@
           category: "成长",
           color: "#c69a42",
           taskType: "bonus",
+          startTime: "22:00",
+          endTime: "22:10",
           createdAt: created,
           archivedAt: null,
         },
@@ -182,6 +192,12 @@
           category: CATEGORY_COLORS[habit.category] ? habit.category : "其他",
           color: /^#[0-9a-f]{6}$/i.test(habit.color || "") ? habit.color : COLORS[index % COLORS.length],
           taskType: ["baseline", "bonus", "weekly"].includes(habit.taskType) ? habit.taskType : "baseline",
+          startTime: /^\d{2}:\d{2}$/.test(habit.startTime || "") ? habit.startTime : "",
+          endTime: /^\d{2}:\d{2}$/.test(habit.endTime || "") ? habit.endTime : "",
+          weekday:
+            Number.isInteger(habit.weekday) && habit.weekday >= 0 && habit.weekday <= 6
+              ? habit.weekday
+              : null,
           createdAt: habit.createdAt || todayKey(),
           archivedAt: habit.archivedAt || null,
         })),
@@ -200,6 +216,8 @@
                 title: String(task.title).slice(0, 80),
                 category: CATEGORY_COLORS[task.category] ? task.category : "其他",
                 taskType: ["baseline", "bonus", "weekly"].includes(task.taskType) ? task.taskType : "bonus",
+                startTime: /^\d{2}:\d{2}$/.test(task.startTime || "") ? task.startTime : "",
+                endTime: /^\d{2}:\d{2}$/.test(task.endTime || "") ? task.endTime : "",
                 createdAt: task.createdAt || new Date().toISOString(),
                 completedAt: task.completedAt || null,
               }))
@@ -237,8 +255,10 @@
 
   function habitsForDate(key, includeArchivedCompletion = false) {
     const day = state.days[key];
+    const weekday = parseKey(key).getDay();
     return state.habits.filter(
       (habit) =>
+        (habit.weekday == null || habit.weekday === weekday) &&
         habit.createdAt <= key &&
         (!habit.archivedAt ||
           habit.archivedAt > key ||
@@ -377,14 +397,21 @@
 
   function taskTemplate({ task, completed, completedAt, type, log, day, deletable = true }) {
     const color = task.color || categoryColor(task.category);
+    const habitOrigin =
+      type === "habit" && Number.isInteger(task.weekday)
+        ? `每周${SHORT_WEEKDAYS[task.weekday]}`
+        : "每日固定";
     const typeMeta =
       type === "habit"
-        ? `<span class="task-origin">每日固定</span>`
+        ? `<span class="task-origin">${habitOrigin}</span>`
         : `<span class="task-origin">${completedAt ? `${formatTime(completedAt)} 完成` : "本次计划"}</span>`;
     const detailBits = [];
     if (Number(log?.actualMinutes) > 0) detailBits.push(`${Number(log.actualMinutes)} 分钟`);
     if (Number(log?.quantity) > 0) detailBits.push(`${Number(log.quantity)} 题`);
     if (log?.blocker) detailBits.push("有卡点");
+    const scheduleLabel = task.startTime
+      ? `${task.startTime}${task.endTime ? `–${task.endTime}` : ""}`
+      : "";
     return `
       <article
         class="task-item ${completed ? "is-completed" : ""}"
@@ -400,6 +427,7 @@
           <span class="task-title">${escapeHtml(task.title)}</span>
           <div class="task-meta">
             <span class="task-category">${escapeHtml(task.category || "其他")}</span>
+            ${scheduleLabel ? `<span class="task-schedule">${escapeHtml(scheduleLabel)}</span>` : ""}
             ${typeMeta}
             ${detailBits.length ? `<span class="task-detail-chip">${detailBits.join(" · ")}</span>` : ""}
           </div>
@@ -485,18 +513,20 @@
       $("#today-progress-copy").textContent = stats.planned ? `还有 ${stats.planned} 件待完成` : "暂无安排，也可以留一点时间给自己";
     }
 
-    const weekDates = Array.from({ length: 7 }, (_, offset) => addDays(new Date(), offset));
+    const weekDates = Array.from({ length: 7 }, (_, offset) =>
+      addDays(startOfWeekMonday(new Date()), offset)
+    );
     const weekKeys = weekDates.map(dateKey);
     const weekStats = aggregate(weekKeys);
     const weeklyItems = weeklyItemsForKeys(weekKeys);
     $("#week-summary").textContent = `本周 ${weekStats.completed} / ${weekStats.planned}`;
-    $("#week-strip").innerHTML = weekDates.map((date, offset) => {
+    $("#week-strip").innerHTML = weekDates.map((date) => {
       const dateValue = dateKey(date);
       const dateStats = getDayStats(dateValue);
       const dayProgress = dateStats.planned ? Math.round((dateStats.completed / dateStats.planned) * 100) : 0;
       return `
-        <button class="week-day ${dateValue === key ? "is-selected" : ""} ${offset === 0 ? "is-today" : ""}" type="button" data-plan-date="${dateValue}" style="--day-progress: ${dayProgress}%">
-          <span>${offset === 0 ? "今天" : `周${SHORT_WEEKDAYS[date.getDay()]}`}</span>
+        <button class="week-day ${dateValue === key ? "is-selected" : ""} ${dateValue === todayKey() ? "is-today" : ""}" type="button" data-plan-date="${dateValue}" style="--day-progress: ${dayProgress}%">
+          <span>${dateValue === todayKey() ? "今天" : `周${SHORT_WEEKDAYS[date.getDay()]}`}</span>
           <strong>${date.getDate()}</strong>
           <small>${dateStats.completed}/${dateStats.planned}</small>
           <i class="week-day-progress" aria-hidden="true"><b></b></i>
@@ -511,7 +541,7 @@
             return `
               <button class="weekly-preview-item ${item.completed ? "is-completed" : ""}" type="button" data-open-week-view>
                 <span class="weekly-preview-day">${dayLabel}</span>
-                <span class="weekly-preview-title">${escapeHtml(item.task.title)}</span>
+                <span class="weekly-preview-title">${item.task.startTime ? `${escapeHtml(item.task.startTime)} · ` : ""}${escapeHtml(item.task.title)}</span>
                 <i>${item.completed ? "✓" : "→"}</i>
               </button>`;
           })
@@ -521,21 +551,84 @@
     $("#week-total-completed").textContent = weekStats.completed;
     $("#week-total-rate").textContent = `${weekStats.planned ? Math.round((weekStats.completed / weekStats.planned) * 100) : 0}%`;
     $("#week-total-tasks").textContent = weeklyItems.length;
-    const maxWeekDay = Math.max(1, ...weekDates.map((date) => getDayStats(dateKey(date)).completed));
-    $("#week-modal-chart").innerHTML = weekDates
-      .map((date) => {
-        const dateValue = dateKey(date);
-        const dateStats = getDayStats(dateValue);
-        const height = dateStats.completed ? Math.max(8, Math.round((dateStats.completed / maxWeekDay) * 100)) : 3;
-        return `
-          <div class="week-modal-column ${dateValue === todayKey() ? "is-today" : ""}" title="${formatMonthDay(date)}：完成 ${dateStats.completed}/${dateStats.planned}">
-            <span>${dateStats.completed}</span>
-            <i><b style="height:${height}%"></b></i>
-            <strong>${dateValue === todayKey() ? "今天" : `周${SHORT_WEEKDAYS[date.getDay()]}`}</strong>
-            <small>${date.getDate()}日</small>
-          </div>`;
-      })
-      .join("");
+    const scheduleItems = weekKeys.flatMap((dateValue) => {
+      const day = state.days[dateValue];
+      if (!day) return [];
+      const scheduled = [];
+      habitsForDate(dateValue).forEach((habit) => {
+        if (!habit.startTime && habit.taskType !== "weekly") return;
+        scheduled.push({
+          task: habit,
+          type: "habit",
+          key: dateValue,
+          completed: Boolean(day.habits?.[habit.id]),
+          completedAt: day.habits?.[habit.id],
+          log: day.logs?.[habit.id],
+        });
+      });
+      (day.extras || []).forEach((task) => {
+        if (!task.startTime && task.taskType !== "weekly") return;
+        scheduled.push({
+          task,
+          type: "extra",
+          key: dateValue,
+          completed: Boolean(task.completedAt),
+          completedAt: task.completedAt,
+          log: day.logs?.[task.id],
+        });
+      });
+      return scheduled;
+    });
+    const timeSlots = ["06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00"];
+    const slotIndex = (startTime) => {
+      if (!startTime) return -1;
+      const [hours, minutes] = startTime.split(":").map(Number);
+      return Math.max(0, Math.min(timeSlots.length - 1, Math.floor((hours * 60 + minutes - 360) / 120)));
+    };
+    const scheduleChip = (item) => `
+      <button
+        class="schedule-task ${item.completed ? "is-completed" : ""}"
+        type="button"
+        data-action="open-task-log"
+        data-task-type="${item.type}"
+        data-task-id="${escapeHtml(item.task.id)}"
+        data-task-day="${item.key}"
+        style="--schedule-color: ${escapeHtml(item.task.color || categoryColor(item.task.category))}"
+        title="${escapeHtml(item.task.title)}"
+      >
+        <span>${item.task.startTime ? escapeHtml(item.task.startTime) : "未排"}</span>
+        <strong>${escapeHtml(item.task.title)}</strong>
+      </button>`;
+    const timetableHeader = weekDates.map((date) => {
+      const dateValue = dateKey(date);
+      const dateStats = getDayStats(dateValue);
+      return `<div class="timetable-day ${dateValue === todayKey() ? "is-today" : ""}">
+        <strong>${dateValue === todayKey() ? "今天" : `周${SHORT_WEEKDAYS[date.getDay()]}`}</strong>
+        <span>${date.getMonth() + 1}/${date.getDate()} · ${dateStats.completed}/${dateStats.planned}</span>
+      </div>`;
+    }).join("");
+    const timetableRows = timeSlots.map((slot, index) => {
+      const cells = weekKeys.map((dateValue) => {
+        const items = scheduleItems.filter(
+          (item) => item.key === dateValue && slotIndex(item.task.startTime) === index
+        );
+        return `<div class="timetable-cell">${items.map(scheduleChip).join("")}</div>`;
+      }).join("");
+      return `<div class="timetable-time">${slot}</div>${cells}`;
+    }).join("");
+    const unscheduledCells = weekKeys.map((dateValue) => {
+      const items = scheduleItems.filter(
+        (item) => item.key === dateValue && !item.task.startTime
+      );
+      return `<div class="timetable-cell">${items.map(scheduleChip).join("")}</div>`;
+    }).join("");
+    $("#week-timetable").innerHTML = `
+      <div class="timetable-corner">时间</div>
+      ${timetableHeader}
+      ${timetableRows}
+      <div class="timetable-time timetable-unscheduled">未排时间</div>
+      ${unscheduledCells}
+    `;
     $("#week-modal-tasks").innerHTML = weeklyItems.length
       ? weekKeys
           .map((dateValue) => {
@@ -568,7 +661,12 @@
       bonus: { element: $("#bonus-task-list"), count: $("#bonus-lane-count"), items: [] },
     };
     habits.forEach((habit) => {
-      const taskType = habit.taskType === "weekly" ? "bonus" : habit.taskType || "baseline";
+      const taskType =
+        habit.taskType === "weekly"
+          ? Number.isInteger(habit.weekday)
+            ? "baseline"
+            : "bonus"
+          : habit.taskType || "baseline";
       lanes[taskType].items.push({
         task: habit,
         day: key,
@@ -916,7 +1014,9 @@
             <span class="habit-card-icon" aria-hidden="true">${escapeHtml(habit.emoji)}</span>
             <div class="habit-card-main">
               <h3>${escapeHtml(habit.title)}</h3>
-              <p>${taskTypeLabel(habit.taskType)} · 每天自动出现 · 从 ${escapeHtml(habit.createdAt.replaceAll("-", "."))} 开始</p>
+              <p>${taskTypeLabel(habit.taskType)} · ${
+                Number.isInteger(habit.weekday) ? `每周${SHORT_WEEKDAYS[habit.weekday]}` : "每天自动出现"
+              } · 从 ${escapeHtml(habit.createdAt.replaceAll("-", "."))} 开始</p>
             </div>
             <span class="habit-category-tag">${escapeHtml(habit.category)}</span>
             <div class="habit-actions">
@@ -956,7 +1056,14 @@
     renderAll();
   }
 
-  function addExtraTask(title, category = "其他", taskType = "bonus", key = ui.activePlanDate) {
+  function addExtraTask(
+    title,
+    category = "其他",
+    taskType = "bonus",
+    key = ui.activePlanDate,
+    startTime = "",
+    endTime = ""
+  ) {
     const cleanTitle = title.trim();
     if (!cleanTitle) return;
     const day = ensureDay(key);
@@ -965,6 +1072,8 @@
       title: cleanTitle.slice(0, 80),
       category: CATEGORY_COLORS[category] ? category : "其他",
       taskType: ["baseline", "bonus", "weekly"].includes(taskType) ? taskType : "bonus",
+      startTime,
+      endTime,
       createdAt: new Date().toISOString(),
       completedAt: null,
     });
@@ -1006,6 +1115,8 @@
     $("#habit-title").value = habit?.title || "";
     $("#habit-category").value = habit?.category || "成长";
     $("#habit-task-type").value = habit?.taskType || "baseline";
+    $("#habit-start-time").value = habit?.startTime || "";
+    $("#habit-end-time").value = habit?.endTime || "";
     renderEmojiPicker();
     renderColorPicker();
     const dialog = $("#habit-modal");
@@ -1041,6 +1152,8 @@
     }
     const category = $("#habit-category").value;
     const taskType = $("#habit-task-type").value;
+    const startTime = $("#habit-start-time").value;
+    const endTime = $("#habit-end-time").value;
     const existing = ui.editingHabitId
       ? state.habits.find((habit) => habit.id === ui.editingHabitId)
       : null;
@@ -1050,6 +1163,8 @@
       existing.emoji = ui.selectedEmoji;
       existing.color = ui.selectedColor;
       existing.taskType = taskType;
+      existing.startTime = startTime;
+      existing.endTime = endTime;
       showToast("固定事项已更新");
     } else {
       state.habits.push({
@@ -1059,6 +1174,8 @@
         emoji: ui.selectedEmoji,
         color: ui.selectedColor,
         taskType,
+        startTime,
+        endTime,
         createdAt: todayKey(),
         archivedAt: null,
       });
@@ -1092,6 +1209,9 @@
     $("#quick-modal-input").value = "";
     $("#quick-modal-category").value = "其他";
     $("#quick-modal-type").value = ui.quickTaskType;
+    $("#quick-modal-date").value = key;
+    $("#quick-modal-start-time").value = "";
+    $("#quick-modal-end-time").value = "";
     $(".quick-modal .eyebrow").textContent =
       key === todayKey() ? "安排今天" : `安排 ${formatMonthDay(parseKey(key))}`;
     const dialog = $("#quick-modal");
@@ -1101,6 +1221,774 @@
 
   function taskTypeLabel(taskType) {
     return { baseline: "底线", bonus: "加分", weekly: "周任务" }[taskType] || "底线";
+  }
+
+  function splitDelimitedRow(line) {
+    const delimiter = line.includes("\t") ? "\t" : ",";
+    const cells = [];
+    let value = "";
+    let quoted = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (character === '"' && line[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = !quoted;
+      } else if (character === delimiter && !quoted) {
+        cells.push(value.trim());
+        value = "";
+      } else {
+        value += character;
+      }
+    }
+    cells.push(value.trim());
+    return cells;
+  }
+
+  function normalizeImportTime(value) {
+    const match = String(value || "")
+      .trim()
+      .match(/^(\d{1,2})(?:[:：点](\d{1,2}))?/);
+    if (!match) return "";
+    const hours = Number(match[1]);
+    const minutes = Number(match[2] || 0);
+    if (hours > 23 || minutes > 59) return "";
+    return `${pad(hours)}:${pad(minutes)}`;
+  }
+
+  function resolveImportDate(dateValue = "", weekdayValue = "") {
+    const dateText = String(dateValue).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+      return dateText;
+    }
+    const monthDay = dateText.match(/^(\d{1,2})[月/.\-](\d{1,2})日?$/);
+    if (monthDay) {
+      return dateKey(new Date(new Date().getFullYear(), Number(monthDay[1]) - 1, Number(monthDay[2])));
+    }
+    const normalized = String(weekdayValue || dateText)
+      .trim()
+      .toLowerCase()
+      .replace(/^星期/, "")
+      .replace(/^周/, "");
+    const weekdayMap = {
+      一: 0,
+      二: 1,
+      三: 2,
+      四: 3,
+      五: 4,
+      六: 5,
+      日: 6,
+      天: 6,
+      mon: 0,
+      monday: 0,
+      tue: 1,
+      tues: 1,
+      tuesday: 1,
+      wed: 2,
+      wednesday: 2,
+      thu: 3,
+      thur: 3,
+      thursday: 3,
+      fri: 4,
+      friday: 4,
+      sat: 5,
+      saturday: 5,
+      sun: 6,
+      sunday: 6,
+      1: 0,
+      2: 1,
+      3: 2,
+      4: 3,
+      5: 4,
+      6: 5,
+      7: 6,
+    };
+    const target = weekdayMap[normalized];
+    return target === undefined ? "" : dateKey(addDays(startOfWeekMonday(new Date()), target));
+  }
+
+  function timetableRowsFromText(text) {
+    const lines = String(text)
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!lines.length) return [];
+
+    const headerMap = {};
+    const firstCells = splitDelimitedRow(lines[0]).map((cell) => cell.toLowerCase().replace(/\s+/g, ""));
+    const aliases = {
+      date: ["日期", "date", "day"],
+      weekday: ["周几", "星期", "星期几", "weekday", "dayofweek"],
+      start: ["开始", "开始时间", "start", "starttime"],
+      end: ["结束", "结束时间", "end", "endtime"],
+      title: ["事项", "任务", "课程", "课程名", "task", "title", "subject"],
+      category: ["分类", "类别", "category", "type"],
+    };
+    Object.entries(aliases).forEach(([field, words]) => {
+      const index = firstCells.findIndex((cell) => words.some((word) => cell === word || cell.includes(word)));
+      if (index !== -1) headerMap[field] = index;
+    });
+    const hasHeader =
+      headerMap.title !== undefined &&
+      (headerMap.date !== undefined || headerMap.weekday !== undefined) &&
+      (headerMap.start !== undefined || headerMap.date !== undefined || headerMap.weekday !== undefined);
+    const contentLines = hasHeader ? lines.slice(1) : lines;
+    const rows = [];
+
+    contentLines.forEach((line) => {
+      const cells = splitDelimitedRow(line);
+      let date = "";
+      let startTime = "";
+      let endTime = "";
+      let title = "";
+      let category = "学习";
+
+      if (hasHeader) {
+        date = resolveImportDate(
+          headerMap.date !== undefined ? cells[headerMap.date] : "",
+          headerMap.weekday !== undefined ? cells[headerMap.weekday] : ""
+        );
+        startTime = normalizeImportTime(headerMap.start !== undefined ? cells[headerMap.start] : "");
+        endTime = normalizeImportTime(headerMap.end !== undefined ? cells[headerMap.end] : "");
+        title = headerMap.title !== undefined ? String(cells[headerMap.title] || "").trim() : "";
+        category = headerMap.category !== undefined ? String(cells[headerMap.category] || "").trim() : "学习";
+      } else {
+        const directMatch = line.match(
+          /^(周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}[月/.\-]\d{1,2}日?|\d{4}-\d{2}-\d{2})\s+(\d{1,2}[:：点]\d{1,2})\s*[-–—~至]\s*(\d{1,2}[:：点]\d{1,2})\s+(.+)$/
+        );
+        if (directMatch) {
+          date = resolveImportDate(directMatch[1]);
+          startTime = normalizeImportTime(directMatch[2]);
+          endTime = normalizeImportTime(directMatch[3]);
+          title = directMatch[4].trim();
+        } else if (cells.length >= 4) {
+          date = resolveImportDate(cells[0], cells[0]);
+          startTime = normalizeImportTime(cells[1]);
+          endTime = normalizeImportTime(cells[2]);
+          title = String(cells[3] || "").trim();
+          category = String(cells[4] || "学习").trim();
+        }
+      }
+
+      if (!date || !startTime || !title) return;
+      rows.push({
+        date,
+        title: title.slice(0, 80),
+        startTime,
+        endTime,
+        category: CATEGORY_COLORS[category] ? category : "学习",
+      });
+    });
+    return rows;
+  }
+
+  function openWeekOverview() {
+    const dialog = $("#week-overview-modal");
+    if (!dialog.open) dialog.showModal();
+    window.setTimeout(() => {
+      const wrap = $(".weekly-timetable-wrap");
+      const today = $("#week-timetable .timetable-day.is-today");
+      if (!wrap || !today) return;
+      const nextLeft = today.offsetLeft + today.offsetWidth / 2 - wrap.clientWidth / 2;
+      wrap.scrollTo({ left: Math.max(0, nextLeft), behavior: "smooth" });
+    }, 120);
+  }
+
+  function commitTimetableRows(rows, sourceLabel = "课表") {
+    let added = 0;
+    let skipped = 0;
+    const createdHabitIds = [];
+    rows.forEach((row) => {
+      const weekday = parseKey(row.date).getDay();
+      const duplicate = state.habits.some(
+        (habit) =>
+          habit.taskType === "weekly" &&
+          habit.weekday === weekday &&
+          habit.title === row.title.slice(0, 30) &&
+          habit.startTime === row.startTime &&
+          (habit.endTime || "") === (row.endTime || "")
+      );
+      if (duplicate) {
+        skipped += 1;
+        return;
+      }
+      const habit = {
+        id: uid("class"),
+        title: row.title.slice(0, 30),
+        category: row.category,
+        taskType: "weekly",
+        weekday,
+        startTime: row.startTime,
+        endTime: row.endTime,
+        emoji: "📚",
+        color: categoryColor(row.category),
+        createdAt: dateKey(startOfWeekMonday(new Date())),
+        archivedAt: null,
+      };
+      state.habits.push(habit);
+      createdHabitIds.push(habit.id);
+      added += 1;
+    });
+
+    if (!added) {
+      showToast(skipped ? `这 ${skipped} 项已经导入过了` : "没有识别到课表，请检查格式");
+      return;
+    }
+
+    persist();
+    renderAll();
+    const importDialog = $("#schedule-import-modal");
+    if (importDialog.open) importDialog.close();
+    window.setTimeout(openWeekOverview, 80);
+    showToast(
+      `${sourceLabel}已生成 ${added} 项${skipped ? `，跳过 ${skipped} 项重复内容` : ""}`,
+      "撤销",
+      () => {
+        state.habits = state.habits.filter((habit) => !createdHabitIds.includes(habit.id));
+        persist();
+        renderAll();
+        showToast("已撤销这次导入");
+      },
+      6500
+    );
+  }
+
+  function importTimetable(text) {
+    const rows = timetableRowsFromText(text);
+    commitTimetableRows(rows);
+  }
+
+  function normalizeOcrWord(value) {
+    return String(value || "")
+      .replace(/[|｜丨]/g, " ")
+      .replace(/\s+/g, "")
+      .trim();
+  }
+
+  function collectOcrLines(data) {
+    const lines = [];
+    const seen = new Set();
+
+    const tsvLines = (() => {
+      if (!data?.tsv) return [];
+      const grouped = new Map();
+      String(data.tsv)
+        .split(/\r?\n/)
+        .slice(1)
+        .forEach((row) => {
+          const cells = row.split("\t");
+          if (cells.length < 12 || Number(cells[0]) !== 5) return;
+          const text = normalizeOcrWord(cells.slice(11).join("\t"));
+          if (!text) return;
+          const key = `${cells[1]}:${cells[2]}:${cells[3]}:${cells[4]}`;
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key).push({
+            text,
+            wordNumber: Number(cells[5]) || 0,
+            bbox: {
+              x0: Number(cells[6]) || 0,
+              y0: Number(cells[7]) || 0,
+              x1: (Number(cells[6]) || 0) + (Number(cells[8]) || 0),
+              y1: (Number(cells[7]) || 0) + (Number(cells[9]) || 0),
+            },
+          });
+        });
+      return [...grouped.values()]
+        .map((words) => {
+          words.sort((a, b) => a.wordNumber - b.wordNumber || a.bbox.x0 - b.bbox.x0);
+          const bbox = words.reduce(
+            (total, word) => ({
+              x0: Math.min(total.x0, word.bbox.x0),
+              y0: Math.min(total.y0, word.bbox.y0),
+              x1: Math.max(total.x1, word.bbox.x1),
+              y1: Math.max(total.y1, word.bbox.y1),
+            }),
+            { ...words[0].bbox }
+          );
+          return {
+            words,
+            bbox,
+            text: words.map((word) => word.text).join(" "),
+            x: (bbox.x0 + bbox.x1) / 2,
+            y: (bbox.y0 + bbox.y1) / 2,
+            height: Math.max(1, bbox.y1 - bbox.y0),
+          };
+        })
+        .sort((a, b) => a.y - b.y || a.x - b.x);
+    })();
+    if (tsvLines.length) return tsvLines;
+
+    const addLine = (line) => {
+      const words = (line?.words || [])
+        .map((word) => {
+          const text = normalizeOcrWord(word.text);
+          const bbox = word.bbox || {};
+          if (!text || !Number.isFinite(bbox.x0) || !Number.isFinite(bbox.y0)) return null;
+          return {
+            text,
+            bbox: {
+              x0: Number(bbox.x0),
+              y0: Number(bbox.y0),
+              x1: Number(bbox.x1),
+              y1: Number(bbox.y1),
+            },
+          };
+        })
+        .filter(Boolean);
+      if (!words.length) return;
+      const bbox = words.reduce(
+        (total, word) => ({
+          x0: Math.min(total.x0, word.bbox.x0),
+          y0: Math.min(total.y0, word.bbox.y0),
+          x1: Math.max(total.x1, word.bbox.x1),
+          y1: Math.max(total.y1, word.bbox.y1),
+        }),
+        { ...words[0].bbox }
+      );
+      const signature = `${Math.round(bbox.x0)}:${Math.round(bbox.y0)}:${words.map((word) => word.text).join("")}`;
+      if (seen.has(signature)) return;
+      seen.add(signature);
+      lines.push({
+        words,
+        bbox,
+        text: words.map((word) => word.text).join(" "),
+        x: (bbox.x0 + bbox.x1) / 2,
+        y: (bbox.y0 + bbox.y1) / 2,
+        height: Math.max(1, bbox.y1 - bbox.y0),
+      });
+    };
+
+    const walk = (node) => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node.lines)) node.lines.forEach(addLine);
+      if (Array.isArray(node.paragraphs)) node.paragraphs.forEach(walk);
+      if (Array.isArray(node.blocks)) node.blocks.forEach(walk);
+    };
+
+    walk(data);
+    if (!lines.length && Array.isArray(data?.lines)) data.lines.forEach(addLine);
+    return lines.sort((a, b) => a.y - b.y || a.x - b.x);
+  }
+
+  function weekdayIndexFromOcrText(value) {
+    const text = normalizeOcrWord(value).toLowerCase();
+    if (!text || text.length > 12) return -1;
+    const chinese = text.match(/(?:星期|周|礼拜)([一二三四五六日天1-7])/);
+    if (chinese) {
+      const labels = { 一: 0, 二: 1, 三: 2, 四: 3, 五: 4, 六: 5, 日: 6, 天: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6 };
+      return labels[chinese[1]] ?? -1;
+    }
+    const english = text.match(/^(mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)$/);
+    if (!english) return -1;
+    return ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].findIndex((day) => english[1].startsWith(day));
+  }
+
+  function weekdayCandidatesFromOcrLine(line) {
+    const candidates = [];
+    line.words.forEach((word) => {
+      const day = weekdayIndexFromOcrText(word.text);
+      if (day === -1) return;
+      candidates.push({
+        day,
+        x: (word.bbox.x0 + word.bbox.x1) / 2,
+        y: (word.bbox.y0 + word.bbox.y1) / 2,
+      });
+    });
+    if (!candidates.length) {
+      for (let start = 0; start < line.words.length; start += 1) {
+        let combined = "";
+        for (let end = start; end < Math.min(line.words.length, start + 4); end += 1) {
+          combined += normalizeOcrWord(line.words[end].text);
+          const day = weekdayIndexFromOcrText(combined);
+          if (day !== -1) {
+            const words = line.words.slice(start, end + 1);
+            const bbox = words.reduce(
+              (total, word) => ({
+                x0: Math.min(total.x0, word.bbox.x0),
+                y0: Math.min(total.y0, word.bbox.y0),
+                x1: Math.max(total.x1, word.bbox.x1),
+                y1: Math.max(total.y1, word.bbox.y1),
+              }),
+              { ...words[0].bbox }
+            );
+            candidates.push({ day, x: (bbox.x0 + bbox.x1) / 2, y: line.y });
+            start = end;
+            break;
+          }
+          if (combined.length >= 4) break;
+        }
+      }
+    }
+    if (candidates.length) return candidates;
+
+    const compactLine = normalizeOcrWord(line.text);
+    const matches = [...compactLine.matchAll(/(?:星期|周|礼拜)([一二三四五六日天1-7])/g)];
+    if (matches.length < 2) return candidates;
+    matches.forEach((match, index) => {
+      const labels = { 一: 0, 二: 1, 三: 2, 四: 3, 五: 4, 六: 5, 日: 6, 天: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6 };
+      const x0 = line.bbox.x0 + ((line.bbox.x1 - line.bbox.x0) * index) / matches.length;
+      const x1 = line.bbox.x0 + ((line.bbox.x1 - line.bbox.x0) * (index + 1)) / matches.length;
+      candidates.push({ day: labels[match[1]], x: (x0 + x1) / 2, y: line.y });
+    });
+    return candidates;
+  }
+
+  function findOcrDayColumns(lines, width, height) {
+    const candidates = lines
+      .filter((line) => line.y < height * 0.45)
+      .flatMap(weekdayCandidatesFromOcrLine);
+    if (candidates.length < 3) return [];
+
+    const clusters = [];
+    candidates.forEach((candidate) => {
+      const cluster = clusters.find((item) => Math.abs(item.y - candidate.y) < height * 0.025);
+      if (cluster) {
+        cluster.items.push(candidate);
+        cluster.y = (cluster.y * (cluster.items.length - 1) + candidate.y) / cluster.items.length;
+      } else {
+        clusters.push({ y: candidate.y, items: [candidate] });
+      }
+    });
+    clusters.sort((a, b) => b.items.length - a.items.length || a.y - b.y);
+
+    for (const cluster of clusters) {
+      const byDay = new Map();
+      cluster.items.forEach((candidate) => {
+        const previous = byDay.get(candidate.day);
+        if (!previous || Math.abs(previous.x - candidate.x) > width * 0.025) {
+          byDay.set(candidate.day, candidate);
+        }
+      });
+      if (byDay.size < 3) continue;
+      const columns = [...byDay.values()].sort((a, b) => a.x - b.x);
+      if (columns[columns.length - 1].x - columns[0].x < width * 0.25) continue;
+      return columns;
+    }
+    return [];
+  }
+
+  function ocrTimesFromText(value) {
+    const text = String(value || "")
+      .replace(/[Oo]/g, "0")
+      .replace(/[：．]/g, ":")
+      .replace(/[–—~～]/g, "-");
+    const times = [];
+    for (const match of text.matchAll(/(?:^|[^\d])([01]?\d|2[0-3])\s*:\s*([0-5]\d)(?!\d)/g)) {
+      const hour = Number(match[1]);
+      if (hour < 5) continue;
+      const value = `${pad(hour)}:${match[2]}`;
+      if (!times.includes(value)) times.push(value);
+    }
+    return times;
+  }
+
+  function findOcrTimeRows(lines, dayColumns, width, height) {
+    const firstDayX = dayColumns[0].x;
+    const gutterLimit = firstDayX - Math.max(12, width * 0.015);
+    const rows = [];
+    lines.forEach((line) => {
+      const gutterWords = line.words.filter(
+        (word) => (word.bbox.x0 + word.bbox.x1) / 2 < gutterLimit
+      );
+      if (!gutterWords.length) return;
+      const times = ocrTimesFromText(gutterWords.map((word) => word.text).join(""));
+      if (!times.length) return;
+      const row = {
+        y: line.y,
+        start: times[0],
+        end: times[1] || "",
+      };
+      const duplicate = rows.some(
+        (item) =>
+          (Math.abs(item.y - row.y) < height * 0.018 && item.start === row.start) ||
+          (item.start === row.start && item.end === row.end && Math.abs(item.y - row.y) < height * 0.04)
+      );
+      if (!duplicate) rows.push(row);
+    });
+    const sorted = rows.sort((a, b) => a.y - b.y);
+    if (sorted.length < 2) return sorted;
+    const gaps = sorted
+      .slice(1)
+      .map((row, index) => row.y - sorted[index].y)
+      .filter((gap) => gap > 0)
+      .sort((a, b) => a - b);
+    const medianGap = gaps[Math.floor(gaps.length / 2)] || height * 0.05;
+    const groupGap = Math.max(height * 0.02, medianGap * 0.58);
+    const grouped = [];
+    sorted.forEach((row) => {
+      const previous = grouped[grouped.length - 1];
+      if (previous && !previous.end && !row.end && row.y - previous.lastY < groupGap) {
+        previous.end = row.start;
+        previous.lastY = row.y;
+        previous.y = (previous.y + row.y) / 2;
+        return;
+      }
+      grouped.push({ ...row, lastY: row.y });
+    });
+    return grouped.map(({ lastY, ...row }) => row);
+  }
+
+  function inferScheduleCategory(title) {
+    if (/(体育|跑步|健身|游泳|瑜伽|锻炼)/.test(title)) return "健康";
+    if (/(会议|项目|工作|实习|值班)/.test(title)) return "工作";
+    if (/(英语|数学|语文|物理|化学|生物|历史|地理|政治|课|讲座|实验|学习|阅读)/.test(title)) return "学习";
+    return "学习";
+  }
+
+  function cleanOcrCourseTitle(value) {
+    return String(value || "")
+      .replace(/[|｜丨]/g, " ")
+      .replace(/(?:星期|周|礼拜)[一二三四五六日天1-7]/g, " ")
+      .replace(/\b(?:mon|tue|wed|thu|fri|sat|sun)(?:day)?\b/gi, " ")
+      .replace(/(?:[01]?\d|2[0-3])\s*[:：]\s*[0-5]\d/g, " ")
+      .replace(/(?:课程|科目|任务)[:：]/g, " ")
+      .replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "$1")
+      .replace(/\s+/g, " ")
+      .replace(/^[\-—,:：;；\s]+|[\-—,:：;；\s]+$/g, "")
+      .trim();
+  }
+
+  function timetableRowsFromOcr(data, width, height) {
+    const lines = collectOcrLines(data);
+    const dayColumns = findOcrDayColumns(lines, width, height);
+    if (dayColumns.length < 3) return { rows: [], reason: "没有定位到星期表头" };
+    const timeRows = findOcrTimeRows(lines, dayColumns, width, height);
+    if (timeRows.length < 2) return { rows: [], reason: "没有定位到左侧时间" };
+
+    const headerBottom = Math.min(...dayColumns.map((column) => column.y)) + height * 0.04;
+    const columnBounds = dayColumns.map((column, index) => {
+      const previous = dayColumns[index - 1];
+      const next = dayColumns[index + 1];
+      return {
+        ...column,
+        left: previous ? (previous.x + column.x) / 2 : column.x - (next.x - column.x) / 2,
+        right: next ? (column.x + next.x) / 2 : column.x + (column.x - previous.x) / 2,
+      };
+    });
+    const rowBounds = timeRows.map((row, index) => {
+      const previous = timeRows[index - 1];
+      const next = timeRows[index + 1];
+      return {
+        ...row,
+        top: previous ? (previous.y + row.y) / 2 : headerBottom,
+        bottom: next ? (row.y + next.y) / 2 : height,
+      };
+    });
+    const buckets = new Map();
+
+    lines
+      .filter((line) => line.y > headerBottom)
+      .forEach((line) => {
+        const rowIndex = rowBounds.findIndex((row) => line.y >= row.top && line.y < row.bottom);
+        if (rowIndex === -1) return;
+        columnBounds.forEach((column, columnIndex) => {
+          const words = line.words.filter((word) => {
+            const x = (word.bbox.x0 + word.bbox.x1) / 2;
+            return x >= column.left && x < column.right;
+          });
+          if (!words.length) return;
+          const key = `${columnIndex}:${rowIndex}`;
+          if (!buckets.has(key)) buckets.set(key, { columnIndex, rowIndex, lines: [] });
+          buckets.get(key).lines.push({
+            text: words.map((word) => word.text).join(" "),
+            y: line.y,
+            height: line.height,
+          });
+        });
+      });
+
+    const rows = [];
+    buckets.forEach((bucket) => {
+      const tasks = [];
+      let current = [];
+      let previousLine = null;
+      bucket.lines
+        .sort((a, b) => a.y - b.y)
+        .forEach((line) => {
+          if (previousLine && line.y - previousLine.y > Math.max(previousLine.height, line.height) * 2.1) {
+            if (current.length) tasks.push(current.join(" "));
+            current = [];
+          }
+          current.push(line.text);
+          previousLine = line;
+        });
+      if (current.length) tasks.push(current.join(" "));
+
+      tasks.forEach((rawTitle) => {
+        const title = cleanOcrCourseTitle(rawTitle).slice(0, 80);
+        if (!title || title.length < 2 || /^[\d\s\-—]+$/.test(title) || /^(时间|课程表|课表|节次)$/.test(title)) return;
+        const column = dayColumns[bucket.columnIndex];
+        const time = timeRows[bucket.rowIndex];
+        const inlineTimes = ocrTimesFromText(rawTitle);
+        const startTime = inlineTimes[0] || time.start;
+        const endTime = inlineTimes[1] || time.end;
+        rows.push({
+          date: resolveImportDate("", SHORT_WEEKDAYS[column.day === 6 ? 0 : column.day + 1]),
+          title,
+          startTime,
+          endTime,
+          category: inferScheduleCategory(title),
+        });
+      });
+    });
+
+    return { rows, reason: rows.length ? "" : "没有从时间格中读到课程名称" };
+  }
+
+  function timetableRowsToImportText(rows) {
+    return rows
+      .slice()
+      .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+      .map((row) => {
+        const weekday = new Date(`${row.date}T00:00:00`).getDay();
+        return `${WEEKDAYS[weekday]},${row.startTime},${row.endTime},${row.title},${row.category}`;
+      })
+      .join("\n");
+  }
+
+  function setOcrProgress(progress, status, state = "") {
+    const safeProgress = clamp(Number(progress) || 0, 0, 1);
+    $("#ocr-progress-bar").style.width = `${Math.round(safeProgress * 100)}%`;
+    $("#ocr-status").textContent = status;
+    $("#ocr-status").dataset.state = state;
+  }
+
+  function updateTimetableImportButton() {
+    const button = $("#confirm-schedule-import");
+    const count = timetableRowsFromText($("#schedule-import-text").value).length;
+    button.disabled = false;
+    button.textContent = count ? `生成周课表（${count} 项）` : "导入课表";
+  }
+
+  async function getOcrWorker() {
+    if (ocrWorker) return ocrWorker;
+    if (!window.Tesseract?.createWorker) {
+      throw new Error("识别组件没有加载，请刷新页面后再试");
+    }
+    const assetUrl = (path) => new URL(path, window.location.href).href;
+    ocrWorker = await window.Tesseract.createWorker("chi_sim+eng", 1, {
+      workerPath: assetUrl("./assets/ocr/worker.min.js"),
+      langPath: assetUrl("./assets/ocr/"),
+      corePath: assetUrl("./assets/ocr/tesseract-core-simd-lstm.wasm.js"),
+      logger: (message) => {
+        const statusMap = {
+          "loading tesseract core": "正在加载本地识别引擎",
+          "initializing tesseract": "正在初始化识别引擎",
+          "loading language traineddata": "正在加载中英文识别模型",
+          "initializing api": "正在准备识别",
+          "recognizing text": "正在读取课表中的文字",
+        };
+        const label = statusMap[message.status] || message.status || "正在识别";
+        const progress = Number(message.progress);
+        setOcrProgress(Number.isFinite(progress) ? 0.12 + progress * 0.82 : 0.2, label);
+      },
+    });
+    await ocrWorker.setParameters({
+      preserve_interword_spaces: "1",
+      tessedit_pageseg_mode: "6",
+    });
+    return ocrWorker;
+  }
+
+  async function prepareTimetableImage(file) {
+    if (ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
+    ocrPreviewUrl = URL.createObjectURL(file);
+    $("#ocr-image-preview").src = ocrPreviewUrl;
+    $("#ocr-preview").hidden = false;
+
+    const image = new Image();
+    image.src = ocrPreviewUrl;
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error("这张图片无法读取，请换一张 JPG、PNG 或屏幕截图"));
+    });
+
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    if (!sourceWidth || !sourceHeight) throw new Error("图片尺寸无效，请换一张图片");
+    const largestSide = Math.max(sourceWidth, sourceHeight);
+    const scale =
+      largestSide > 2600
+        ? 2600 / largestSide
+        : largestSide < 1200
+          ? Math.min(2, 1200 / largestSide)
+          : 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
+
+  function releaseOcrPreview() {
+    ocrRunToken += 1;
+    if (ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
+    ocrPreviewUrl = null;
+    $("#ocr-preview").hidden = true;
+    $("#ocr-image-preview").removeAttribute("src");
+    $("#schedule-image-file").disabled = false;
+    setOcrProgress(0, "准备识别");
+    updateTimetableImportButton();
+  }
+
+  async function recognizeTimetableImage(file) {
+    const runToken = ++ocrRunToken;
+    const imageInput = $("#schedule-image-file");
+    const textarea = $("#schedule-import-text");
+    imageInput.disabled = true;
+    textarea.value = "";
+    $("#confirm-schedule-import").disabled = true;
+    setOcrProgress(0.03, "正在优化图片清晰度");
+
+    let worker = null;
+    try {
+      const canvas = await prepareTimetableImage(file);
+      setOcrProgress(0.08, "图片已就绪，正在加载识别模型");
+      worker = await getOcrWorker();
+      const result = await worker.recognize(canvas, {}, { blocks: true, text: true, tsv: true });
+      if (runToken !== ocrRunToken) return;
+
+      const gridResult = timetableRowsFromOcr(result.data, canvas.width, canvas.height);
+      const fallbackRows = gridResult.rows.length
+        ? gridResult.rows
+        : timetableRowsFromText(result.data?.text || "");
+      if (fallbackRows.length) {
+        textarea.value = timetableRowsToImportText(fallbackRows);
+        updateTimetableImportButton();
+        setOcrProgress(1, `识别完成，找到 ${fallbackRows.length} 项安排`, "success");
+      } else {
+        textarea.value = String(result.data?.text || "").trim();
+        updateTimetableImportButton();
+        setOcrProgress(
+          1,
+          `${gridResult.reason || "没有读到完整课表"}。请检查下面文字，或换一张更清晰、完整的截图`,
+          "warning"
+        );
+      }
+      textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (error) {
+      if (runToken === ocrRunToken) {
+        console.error("Timetable OCR failed:", error);
+        setOcrProgress(1, error?.message || "识别失败，请换一张清晰图片", "error");
+        updateTimetableImportButton();
+      }
+    } finally {
+      if (worker) {
+        try {
+          await worker.terminate();
+        } catch {
+          // The next import can create a fresh worker.
+        }
+        if (ocrWorker === worker) ocrWorker = null;
+      }
+      if (runToken === ocrRunToken) imageInput.disabled = false;
+    }
   }
 
   function findTask(type, id, key = ui.activePlanDate) {
@@ -1117,6 +2005,8 @@
     $("#task-log-type").value = type;
     $("#task-log-id").value = id;
     $("#task-log-title").textContent = task.title;
+    $("#task-log-start").value = task.startTime || "";
+    $("#task-log-end").value = task.endTime || "";
     $("#task-log-minutes").value = log.actualMinutes || "";
     $("#task-log-quantity").value = log.quantity || "";
     $("#task-log-blocker").value = log.blocker || "";
@@ -1129,6 +2019,11 @@
     const id = $("#task-log-id").value;
     if (!key || !id) return;
     const day = ensureDay(key);
+    const task = findTask($("#task-log-type").value, id, key);
+    if (task) {
+      task.startTime = $("#task-log-start").value;
+      task.endTime = $("#task-log-end").value;
+    }
     const log = {
       actualMinutes: Math.max(0, Number($("#task-log-minutes").value) || 0),
       quantity: Math.max(0, Number($("#task-log-quantity").value) || 0),
@@ -1139,7 +2034,7 @@
     else day.logs[id] = log;
     persist();
     renderAll();
-    showToast(log.actualMinutes || log.quantity || log.blocker ? "执行记录已保存" : "执行记录已清空");
+    showToast("任务详情已保存");
   }
 
   function openConfirm(title, copy, okLabel, action) {
@@ -1150,7 +2045,7 @@
     $("#confirm-modal").showModal();
   }
 
-  function showToast(message, actionLabel = "", action = null) {
+  function showToast(message, actionLabel = "", action = null, duration = 1900) {
     $("#toast-message").textContent = message;
     const actionButton = $("#toast-action");
     toastActionHandler = action;
@@ -1161,7 +2056,7 @@
     toastTimer = window.setTimeout(() => {
       $("#toast").classList.remove("is-visible");
       toastActionHandler = null;
-    }, 1900);
+    }, duration);
   }
 
   function clamp(value, min, max) {
@@ -1646,8 +2541,16 @@
       (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")
     ) {
       try {
+        const wasControlled = Boolean(navigator.serviceWorker.controller);
+        let refreshingForUpdate = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (!wasControlled || refreshingForUpdate) return;
+          refreshingForUpdate = true;
+          window.location.reload();
+        });
         await navigator.serviceWorker.register("./sw.js");
         await navigator.serviceWorker.ready;
+        navigator.serviceWorker.getRegistration().then((registration) => registration?.update());
         document.documentElement.dataset.offlineReady = "true";
       } catch (error) {
         document.documentElement.dataset.offlineReady = "unavailable";
@@ -1862,12 +2765,45 @@
 
     $("#quick-add-button").addEventListener("click", openQuickModal);
 
-    $("#open-week-view").addEventListener("click", () => {
-      $("#week-overview-modal").showModal();
-    });
+    $("#open-week-view").addEventListener("click", openWeekOverview);
+    $("#nav-week-view").addEventListener("click", openWeekOverview);
+    $("#mobile-week-view").addEventListener("click", openWeekOverview);
     $("#close-week-view").addEventListener("click", () => {
       $("#week-overview-modal").close();
     });
+
+    $("#import-schedule-button").addEventListener("click", () => {
+      $("#schedule-import-text").value = "";
+      $("#schedule-import-file").value = "";
+      releaseOcrPreview();
+      $("#schedule-import-modal").showModal();
+      window.setTimeout(() => $("#schedule-import-text").focus(), 50);
+    });
+
+    $("#schedule-import-file").addEventListener("change", (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        $("#schedule-import-text").value = String(reader.result || "");
+      };
+      reader.readAsText(file, "utf-8");
+    });
+
+    $("#schedule-image-file").addEventListener("change", (event) => {
+      const file = event.target.files?.[0];
+      if (file) recognizeTimetableImage(file);
+    });
+
+    $("#schedule-import-text").addEventListener("input", updateTimetableImportButton);
+
+    $("#schedule-import-form").addEventListener("submit", (event) => {
+      if (event.submitter?.value === "cancel") return;
+      event.preventDefault();
+      importTimetable($("#schedule-import-text").value);
+    });
+
+    $("#schedule-import-modal").addEventListener("close", releaseOcrPreview);
 
     $("#toast-action").addEventListener("click", () => {
       const action = toastActionHandler;
@@ -1884,7 +2820,14 @@
         input.focus();
         return;
       }
-      addExtraTask(input.value, $("#quick-modal-category").value, $("#quick-modal-type").value, ui.quickTaskDate);
+      addExtraTask(
+        input.value,
+        $("#quick-modal-category").value,
+        $("#quick-modal-type").value,
+        $("#quick-modal-date").value || ui.quickTaskDate,
+        $("#quick-modal-start-time").value,
+        $("#quick-modal-end-time").value
+      );
       $("#quick-modal").close();
     });
 
@@ -2009,6 +2952,9 @@
       } else if (event.key === "3") {
         event.preventDefault();
         setView("habits");
+      } else if (event.key === "4") {
+        event.preventDefault();
+        openWeekOverview();
       } else if (event.key.toLowerCase() === "k") {
         event.preventDefault();
         openQuickModal();
